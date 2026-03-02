@@ -5,9 +5,10 @@ Title: DuckDB-Backed Spatial Data Structures
 Description:
     Provides DuckDB-backed implementations of spatial data structures for efficient
     out-of-memory operations on large spatial datasets. The package includes
-    optimized spatial operations including st_intersects, st_contains, st_within,
-    and more. Ideal for spatial analysis, genomic interval analysis, and other
-    spatial workflows requiring memory-efficient operations on large datasets.
+    68 sf-compatible spatial methods (st_intersects, st_contains, st_within, etc.)
+    and GeoParquet 1.0 I/O support via writeGeoParquet(). Ideal for spatial analysis,
+    genomic interval analysis, and integration with BiocDuckDB for MultiAssaySpatialExperiment
+    workflows requiring memory-efficient operations on large datasets.
 Authors@R:
     c(
         person("Patrick", "Aboyoun", role=c("aut", "cre"), email="aboyounp@gene.com"),
@@ -27,7 +28,9 @@ Suggests:
     knitr,
     rmarkdown,
     BiocStyle,
-    testthat
+    testthat,
+    jsonlite,
+    nanoparquet
 biocViews:
     DataImport,
     DataRepresentation,
@@ -39,3 +42,4 @@ Encoding: UTF-8
 Collate:
     'DuckDBTable-spatial.R'
     'DuckDBColumn-spatial.R'
+    'writeGeoParquet.R'

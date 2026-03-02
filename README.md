@@ -1,93 +1,173 @@
 # DuckDBSpatial
 
+**Optional spatial extension for BiocDuckDB and DuckDBDataFrame**
 
+## Overview
 
-## Getting started
+DuckDBSpatial provides 68 `sf`-compatible spatial methods for DuckDB-backed data structures, enabling memory-efficient spatial operations on large datasets. The package includes GeoParquet 1.0 I/O support and seamless integration with DuckDB's native spatial extension.
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## Key Features
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-* [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://code.roche.com/GP/BiocDuckDB/DuckDBSpatial.git
-git branch -M main
-git push -uf origin main
-```
-
-## Integrate with your tools
-
-* [Set up project integrations](https://code.roche.com/GP/BiocDuckDB/DuckDBSpatial/-/settings/integrations)
-
-## Collaborate with your team
-
-* [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+- **68 sf-compatible methods**: Spatial predicates (`st_intersects`, `st_contains`, `st_within`), unary operations (`st_buffer`, `st_centroid`, `st_convex_hull`), binary set operations (`st_union`, `st_difference`, `st_intersection`), and more
+- **Lazy evaluation**: Operations generate SQL pushed down to DuckDB—no data materialization until needed
+- **GeoParquet 1.0 support**: `writeGeoParquet()` creates files readable by DuckDB, GeoPandas, GDAL, and other GeoParquet-aware tools
+- **DuckDB spatial extension**: Direct integration with DuckDB's native `GEOMETRY` type
+- **MultiAssaySpatialExperiment integration**: Required for MASE I/O in BiocDuckDB
 
 ## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```r
+# From Bioconductor
+BiocManager::install("DuckDBSpatial")
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+# Or from source
+devtools::install("DuckDBSpatial")
+```
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+## Quick Start
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+### GeoParquet I/O
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+```r
+library(DuckDBSpatial)
+library(sf)
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+# Write spatial data as GeoParquet
+nc <- st_read(system.file("shape/nc.shp", package="sf"))
+writeGeoParquet(nc, "nc.parquet")
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+# Read in DuckDB with native GEOMETRY type
+library(DuckDBDataFrame)
+ddb <- DuckDBDataFrame("nc.parquet")
+ddb$geometry  # Native GEOMETRY column (lazy)
+```
+
+### Lazy Spatial Operations
+
+```r
+# Spatial predicates stay lazy
+library(sf)
+
+# Create a DuckDBDataFrame with geometry
+pts <- st_sf(
+    id = 1:1000,
+    x = runif(1000, 0, 10),
+    y = runif(1000, 0, 10),
+    geometry = st_as_sfc(lapply(1:1000, function(i) st_point(c(runif(1, 0, 10), runif(1, 0, 10)))))
+)
+writeGeoParquet(pts, "points.parquet")
+ddb_pts <- DuckDBDataFrame("points.parquet")
+
+# Spatial filter (generates SQL, stays lazy)
+bbox <- st_as_sfc("POLYGON((2 2, 8 2, 8 8, 2 8, 2 2))")
+inside <- st_intersects(ddb_pts$geometry, bbox)
+
+# Only materialize filtered rows
+pts_subset <- ddb_pts[inside, ]
+as.data.frame(pts_subset)  # Pulls data from DuckDB
+```
+
+### Spatial Methods
+
+All methods operate on `DuckDBTable` (data frames) or `DuckDBColumn` (individual columns):
+
+**Predicates** (return logical vectors):
+- `st_intersects`, `st_contains`, `st_within`, `st_covers`, `st_covered_by`
+- `st_crosses`, `st_overlaps`, `st_touches`, `st_disjoint`, `st_equals`
+- `st_is_within_distance`, `st_contains_properly`, `st_within_properly`
+
+**Unary operations** (geometry → geometry):
+- `st_buffer`, `st_centroid`, `st_convex_hull`, `st_envelope`, `st_boundary`
+- `st_simplify`, `st_make_valid`, `st_normalize`, `st_reverse`
+- `st_line_merge`, `st_node`, `st_point_on_surface`
+
+**Binary operations** (geometry × geometry → geometry):
+- `st_intersection`, `st_union`, `st_difference`, `st_sym_difference`
+- `st_nearest_points`, `st_shortest_line`
+
+**Measurements**:
+- `st_area`, `st_length`, `st_perimeter`, `st_distance`
+
+**Coercion**:
+- `st_as_text`, `st_as_binary`, `st_as_sfc`, `st_coordinates`, `st_bbox`
+
+See `?DuckDBTable-spatial` and `?DuckDBColumn-spatial` for complete documentation.
+
+## Integration with BiocDuckDB
+
+DuckDBSpatial is required for MultiAssaySpatialExperiment I/O in BiocDuckDB:
+
+```r
+library(BiocDuckDB)
+library(MultiAssaySpatialExperiment)
+library(DuckDBSpatial)
+
+# Write MASE with spatial layers (shapes written as GeoParquet)
+writeParquet(mase_obj, "mase_output")
+
+# Read back with DuckDB-backed spatial layers
+mase <- readParquet("mase_output")
+spatialShapes(mase)  # DuckDBDataFrame with GEOMETRY columns
+```
+
+## GeoParquet Specification
+
+`writeGeoParquet()` conforms to [GeoParquet 1.0.0](https://geoparquet.org/):
+
+- **Encoding**: Well-Known Binary (WKB)
+- **Metadata**: Includes geometry types, bounding box, primary column
+- **Compatibility**: DuckDB, GeoPandas, GDAL, QGIS, sf
+
+Example metadata:
+```json
+{
+  "version": "1.0.0",
+  "primary_column": "geometry",
+  "columns": {
+    "geometry": {
+      "encoding": "WKB",
+      "geometry_types": ["Polygon"],
+      "bbox": [-84.32, 33.88, -75.46, 36.59]
+    }
+  }
+}
+```
+
+## Performance
+
+DuckDBSpatial enables spatial operations on datasets too large for memory:
+
+- **Lazy evaluation**: No data loading until needed
+- **Column pruning**: Read only required columns
+- **Predicate pushdown**: Spatial filters evaluated in DuckDB
+- **Partitioned datasets**: Leverage Arrow partitioning
+
+Example: 1 billion points, 100 GB GeoParquet file—spatial filter runs without loading full dataset.
+
+## Dependencies
+
+**Required** (Depends/Imports):
+- **DuckDBDataFrame**: Core DuckDB table/column classes
+- **sf**: Spatial features framework (for coercion and compatibility)
+- **BiocGenerics**, **S4Vectors**, **dplyr**: Core Bioconductor/data manipulation
+
+**Optional** (Suggests, checked with `requireNamespace()`):
+- **nanoparquet**: GeoParquet metadata generation (only needed for `writeGeoParquet()`)
+- **jsonlite**: JSON metadata handling (only needed for `writeGeoParquet()`)
+
+The package will error gracefully with installation instructions if optional dependencies are missing when calling `writeGeoParquet()`.
+
+## See Also
+
+- [BiocDuckDB](https://github.com/Genentech/BiocDuckDB) - High-level Bioconductor integration
+- [MultiAssaySpatialExperiment](https://github.com/Genentech/MultiAssaySpatialExperiment) - Spatial transcriptomics container
+- [DuckDB Spatial Extension](https://duckdb.org/docs/extensions/spatial) - DuckDB spatial documentation
+- [GeoParquet](https://geoparquet.org/) - GeoParquet specification
 
 ## License
-For open source projects, say how it is licensed.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+MIT + file LICENSE
+
+## Authors
+
+- Patrick Aboyoun (Genentech, Inc.)
