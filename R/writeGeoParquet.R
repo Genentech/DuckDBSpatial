@@ -1,27 +1,7 @@
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### GeoParquet I/O Functions
+### GeoParquet Helper Functions
 ###
 
-#' @keywords internal
-.geometryCol <- function(x) {
-    if (inherits(x, "sf")) {
-        return(attr(x, "sf_column") %||% "geometry")
-    }
-    nms <- names(x)
-    for (nm in c("geometry", "geom", "wkb")) {
-        if (nm %in% nms) {
-            col <- x[[nm]]
-            if (inherits(col, "sfc"))
-                return(nm)
-            if (is.list(col) && length(col) > 0L &&
-                all(vapply(col, function(r) is.null(r) || is.raw(r), NA)))
-                return(nm)
-        }
-    }
-    NULL
-}
-
-#' @keywords internal
 .geometryTypeToGeoParquet <- function(types) {
     # Map sf geometry type names to GeoParquet 1.0 type names
     map <- c(POINT = "Point",
@@ -43,7 +23,6 @@
 }
 
 #' @importFrom sf st_bbox st_geometry_type
-#' @keywords internal
 .buildGeoParquetMetadata <- function(geom, sfc) {
     if (!requireNamespace("jsonlite", quietly = TRUE))
         stop("package 'jsonlite' is required for writeGeoParquet(); ",
