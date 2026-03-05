@@ -1,6 +1,6 @@
 Package: DuckDBSpatial
-Version: 0.9.0
-Date: 2026-03-02
+Version: 0.9.1
+Date: 2026-03-05
 Title: DuckDB-Backed Spatial Data Structures
 Description:
     Provides DuckDB-backed implementations of spatial data structures for efficient
@@ -30,6 +30,7 @@ Suggests:
     BiocStyle,
     testthat,
     jsonlite,
+    lwgeom,
     nanoparquet
 biocViews:
     DataImport,
