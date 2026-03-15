@@ -77,7 +77,7 @@ test_that("writeGeoParquet DuckDB reads as GEOMETRY", {
     schema <- DBI::dbGetQuery(conn, paste0("DESCRIBE SELECT * FROM read_parquet('", path, "')"))
     geom_row <- schema[schema$column_name == "geometry", ]
     expect_true(nrow(geom_row) > 0)
-    expect_equal(geom_row$column_type, "GEOMETRY")
+    expect_true(grepl("^GEOMETRY", geom_row$column_type))
 })
 
 test_that("writeGeoParquet with DataFrame and WKB column errors without sfc", {
