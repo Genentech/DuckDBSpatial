@@ -244,146 +244,145 @@
 #'   \item \code{\link[S4Vectors]{RectangularData}} for the base class
 #' }
 #'
-#' @aliases
-#' st_as_sfc.DuckDBTable
+#' @aliases st_as_sfc.DuckDBTable
 #'
-#' st_as_binary.DuckDBTable
-#' st_as_text.DuckDBTable
+#' @aliases st_as_binary.DuckDBTable
+#' @aliases st_as_text.DuckDBTable
 #'
-#' st_dimension
-#' st_dimension.default
-#' st_dimension.DuckDBTable
-#' st_end_point
-#' st_end_point.default
-#' st_end_point.DuckDBTable
-#' st_geometry_type
-#' st_geometry_type.default
-#' st_geometry_type.DuckDBTable
-#' st_is_closed
-#' st_is_closed.default
-#' st_is_closed.DuckDBTable
-#' st_is_empty
-#' st_is_empty.default
-#' st_is_empty.DuckDBTable
-#' st_is_ring
-#' st_is_ring.default
-#' st_is_ring.DuckDBTable
-#' st_is_simple
-#' st_is_simple.default
-#' st_is_simple.DuckDBTable
-#' st_is_valid.DuckDBTable
-#' st_num_geometries
-#' st_num_geometries.default
-#' st_num_geometries.DuckDBTable
-#' st_num_interior_rings
-#' st_num_interior_rings.default
-#' st_num_interior_rings.DuckDBTable
-#' st_num_points
-#' st_num_points.default
-#' st_num_points.DuckDBTable
-#' st_start_point
-#' st_start_point.default
-#' st_start_point.DuckDBTable
+#' @aliases st_dimension
+#' @aliases st_dimension.default
+#' @aliases st_dimension.DuckDBTable
+#' @aliases st_end_point
+#' @aliases st_end_point.default
+#' @aliases st_end_point.DuckDBTable
+#' @aliases st_geometry_type
+#' @aliases st_geometry_type.default
+#' @aliases st_geometry_type.DuckDBTable
+#' @aliases st_is_closed
+#' @aliases st_is_closed.default
+#' @aliases st_is_closed.DuckDBTable
+#' @aliases st_is_empty
+#' @aliases st_is_empty.default
+#' @aliases st_is_empty.DuckDBTable
+#' @aliases st_is_ring
+#' @aliases st_is_ring.default
+#' @aliases st_is_ring.DuckDBTable
+#' @aliases st_is_simple
+#' @aliases st_is_simple.default
+#' @aliases st_is_simple.DuckDBTable
+#' @aliases st_is_valid.DuckDBTable
+#' @aliases st_num_geometries
+#' @aliases st_num_geometries.default
+#' @aliases st_num_geometries.DuckDBTable
+#' @aliases st_num_interior_rings
+#' @aliases st_num_interior_rings.default
+#' @aliases st_num_interior_rings.DuckDBTable
+#' @aliases st_num_points
+#' @aliases st_num_points.default
+#' @aliases st_num_points.DuckDBTable
+#' @aliases st_start_point
+#' @aliases st_start_point.default
+#' @aliases st_start_point.DuckDBTable
 #'
-#' st_area.DuckDBTable
-#' st_distance
-#' st_distance.default
-#' st_distance.DuckDBTable
-#' st_length
-#' st_length.default
-#' st_length.DuckDBTable
-#' st_perimeter
-#' st_perimeter.default
-#' st_perimeter.DuckDBTable
+#' @aliases st_area.DuckDBTable
+#' @aliases st_distance
+#' @aliases st_distance.default
+#' @aliases st_distance.DuckDBTable
+#' @aliases st_length
+#' @aliases st_length.default
+#' @aliases st_length.DuckDBTable
+#' @aliases st_perimeter
+#' @aliases st_perimeter.default
+#' @aliases st_perimeter.DuckDBTable
 #'
-#' st_boundary.DuckDBTable
-#' st_buffer.DuckDBTable
-#' st_build_area
-#' st_build_area.default
-#' st_build_area.DuckDBTable
-#' st_centroid.DuckDBTable
-#' st_collection_extract.DuckDBTable
-#' st_concave_hull.DuckDBTable
-#' st_convex_hull.DuckDBTable
-#' st_envelope
-#' st_envelope.DuckDBTable
-#' st_exterior_ring.DuckDBTable
-#' st_flip_coordinates
-#' st_flip_coordinates.default
-#' st_flip_coordinates.DuckDBTable
-#' st_inscribed_circle
-#' st_inscribed_circle.default
-#' st_inscribed_circle.DuckDBTable
-#' st_line_interpolate
-#' st_line_interpolate.default
-#' st_line_interpolate.DuckDBTable
-#' st_line_merge.DuckDBTable
-#' st_line_project
-#' st_line_project.default
-#' st_line_project.DuckDBTable
-#' st_line_substring
-#' st_line_substring.default
-#' st_line_substring.DuckDBTable
-#' st_make_valid.DuckDBTable
-#' st_minimum_rotated_rectangle.DuckDBTable
-#' st_node.DuckDBTable
-#' st_normalize.DuckDBTable
-#' st_point_on_surface.DuckDBTable
-#' st_reduce_precision
-#' st_reduce_precision.default
-#' st_reduce_precision.DuckDBTable
-#' st_remove_repeated_points
-#' st_remove_repeated_points.default
-#' st_remove_repeated_points.DuckDBTable
-#' st_reverse.DuckDBTable
-#' st_simplify.DuckDBTable
-#' st_voronoi.DuckDBTable
+#' @aliases st_boundary.DuckDBTable
+#' @aliases st_buffer.DuckDBTable
+#' @aliases st_build_area
+#' @aliases st_build_area.default
+#' @aliases st_build_area.DuckDBTable
+#' @aliases st_centroid.DuckDBTable
+#' @aliases st_collection_extract.DuckDBTable
+#' @aliases st_concave_hull.DuckDBTable
+#' @aliases st_convex_hull.DuckDBTable
+#' @aliases st_envelope
+#' @aliases st_envelope.DuckDBTable
+#' @aliases st_exterior_ring.DuckDBTable
+#' @aliases st_flip_coordinates
+#' @aliases st_flip_coordinates.default
+#' @aliases st_flip_coordinates.DuckDBTable
+#' @aliases st_inscribed_circle
+#' @aliases st_inscribed_circle.default
+#' @aliases st_inscribed_circle.DuckDBTable
+#' @aliases st_line_interpolate
+#' @aliases st_line_interpolate.default
+#' @aliases st_line_interpolate.DuckDBTable
+#' @aliases st_line_merge.DuckDBTable
+#' @aliases st_line_project
+#' @aliases st_line_project.default
+#' @aliases st_line_project.DuckDBTable
+#' @aliases st_line_substring
+#' @aliases st_line_substring.default
+#' @aliases st_line_substring.DuckDBTable
+#' @aliases st_make_valid.DuckDBTable
+#' @aliases st_minimum_rotated_rectangle.DuckDBTable
+#' @aliases st_node.DuckDBTable
+#' @aliases st_normalize.DuckDBTable
+#' @aliases st_point_on_surface.DuckDBTable
+#' @aliases st_reduce_precision
+#' @aliases st_reduce_precision.default
+#' @aliases st_reduce_precision.DuckDBTable
+#' @aliases st_remove_repeated_points
+#' @aliases st_remove_repeated_points.default
+#' @aliases st_remove_repeated_points.DuckDBTable
+#' @aliases st_reverse.DuckDBTable
+#' @aliases st_simplify.DuckDBTable
+#' @aliases st_voronoi.DuckDBTable
 #'
-#' st_contains
-#' st_contains.default
-#' st_contains.DuckDBTable
-#' st_contains_properly
-#' st_contains_properly.default
-#' st_contains_properly.DuckDBTable
-#' st_covered_by
-#' st_covered_by.default
-#' st_covered_by.DuckDBTable
-#' st_covers
-#' st_covers.default
-#' st_covers.DuckDBTable
-#' st_crosses
-#' st_crosses.default
-#' st_crosses.DuckDBTable
-#' st_disjoint
-#' st_disjoint.default
-#' st_disjoint.DuckDBTable
-#' st_equals
-#' st_equals.default
-#' st_equals.DuckDBTable
-#' st_intersects.DuckDBTable
-#' st_is_within_distance
-#' st_is_within_distance.default
-#' st_is_within_distance.DuckDBTable
-#' st_overlaps
-#' st_overlaps.default
-#' st_overlaps.DuckDBTable
-#' st_touches
-#' st_touches.default
-#' st_touches.DuckDBTable
-#' st_within
-#' st_within.default
-#' st_within.DuckDBTable
-#' st_within_properly
-#' st_within_properly.default
-#' st_within_properly.DuckDBTable
+#' @aliases st_contains
+#' @aliases st_contains.default
+#' @aliases st_contains.DuckDBTable
+#' @aliases st_contains_properly
+#' @aliases st_contains_properly.default
+#' @aliases st_contains_properly.DuckDBTable
+#' @aliases st_covered_by
+#' @aliases st_covered_by.default
+#' @aliases st_covered_by.DuckDBTable
+#' @aliases st_covers
+#' @aliases st_covers.default
+#' @aliases st_covers.DuckDBTable
+#' @aliases st_crosses
+#' @aliases st_crosses.default
+#' @aliases st_crosses.DuckDBTable
+#' @aliases st_disjoint
+#' @aliases st_disjoint.default
+#' @aliases st_disjoint.DuckDBTable
+#' @aliases st_equals
+#' @aliases st_equals.default
+#' @aliases st_equals.DuckDBTable
+#' @aliases st_intersects.DuckDBTable
+#' @aliases st_is_within_distance
+#' @aliases st_is_within_distance.default
+#' @aliases st_is_within_distance.DuckDBTable
+#' @aliases st_overlaps
+#' @aliases st_overlaps.default
+#' @aliases st_overlaps.DuckDBTable
+#' @aliases st_touches
+#' @aliases st_touches.default
+#' @aliases st_touches.DuckDBTable
+#' @aliases st_within
+#' @aliases st_within.default
+#' @aliases st_within.DuckDBTable
+#' @aliases st_within_properly
+#' @aliases st_within_properly.default
+#' @aliases st_within_properly.DuckDBTable
 #'
-#' st_difference.DuckDBTable
-#' st_intersection.DuckDBTable
-#' st_nearest_points.DuckDBTable
-#' st_union.DuckDBTable
+#' @aliases st_difference.DuckDBTable
+#' @aliases st_intersection.DuckDBTable
+#' @aliases st_nearest_points.DuckDBTable
+#' @aliases st_union.DuckDBTable
 #'
-#' st_collect
-#' st_collect.default
+#' @aliases st_collect
+#' @aliases st_collect.default
 #'
 #' @keywords utilities methods
 #'

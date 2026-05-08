@@ -243,78 +243,77 @@
 #'
 #' @author Patrick Aboyoun
 #'
-#' @aliases
-#' st_as_sfc.DuckDBColumn
+#' @aliases st_as_sfc.DuckDBColumn
 #'
-#' st_as_binary.DuckDBColumn
-#' st_as_text.DuckDBColumn
+#' @aliases st_as_binary.DuckDBColumn
+#' @aliases st_as_text.DuckDBColumn
 #'
-#' st_coordinates.DuckDBColumn
-#' st_dimension.DuckDBColumn
-#' st_end_point.DuckDBColumn
-#' st_geometry_type.DuckDBColumn
-#' st_is_closed.DuckDBColumn
-#' st_is_empty.DuckDBColumn
-#' st_is_ring.DuckDBColumn
-#' st_is_simple.DuckDBColumn
-#' st_is_valid.DuckDBColumn
-#' st_num_geometries.DuckDBColumn
-#' st_num_interior_rings.DuckDBColumn
-#' st_num_points.DuckDBColumn
-#' st_start_point.DuckDBColumn
+#' @aliases st_coordinates.DuckDBColumn
+#' @aliases st_dimension.DuckDBColumn
+#' @aliases st_end_point.DuckDBColumn
+#' @aliases st_geometry_type.DuckDBColumn
+#' @aliases st_is_closed.DuckDBColumn
+#' @aliases st_is_empty.DuckDBColumn
+#' @aliases st_is_ring.DuckDBColumn
+#' @aliases st_is_simple.DuckDBColumn
+#' @aliases st_is_valid.DuckDBColumn
+#' @aliases st_num_geometries.DuckDBColumn
+#' @aliases st_num_interior_rings.DuckDBColumn
+#' @aliases st_num_points.DuckDBColumn
+#' @aliases st_start_point.DuckDBColumn
 #'
-#' st_area.DuckDBColumn
-#' st_distance.DuckDBColumn
-#' st_length.DuckDBColumn
-#' st_perimeter.DuckDBColumn
+#' @aliases st_area.DuckDBColumn
+#' @aliases st_distance.DuckDBColumn
+#' @aliases st_length.DuckDBColumn
+#' @aliases st_perimeter.DuckDBColumn
 #'
-#' st_boundary.DuckDBColumn
-#' st_buffer.DuckDBColumn
-#' st_build_area.DuckDBColumn
-#' st_centroid.DuckDBColumn
-#' st_collection_extract.DuckDBColumn
-#' st_concave_hull.DuckDBColumn
-#' st_convex_hull.DuckDBColumn
-#' st_envelope.DuckDBColumn
-#' st_exterior_ring.DuckDBColumn
-#' st_flip_coordinates.DuckDBColumn
-#' st_inscribed_circle.DuckDBColumn
-#' st_line_interpolate.DuckDBColumn
-#' st_line_merge.DuckDBColumn
-#' st_line_project.DuckDBColumn
-#' st_line_substring.DuckDBColumn
-#' st_make_valid.DuckDBColumn
-#' st_minimum_rotated_rectangle.DuckDBColumn
-#' st_node.DuckDBColumn
-#' st_normalize.DuckDBColumn
-#' st_point_on_surface.DuckDBColumn
-#' st_reduce_precision.DuckDBColumn
-#' st_remove_repeated_points.DuckDBColumn
-#' st_reverse.DuckDBColumn
-#' st_simplify.DuckDBColumn
-#' st_voronoi.DuckDBColumn
+#' @aliases st_boundary.DuckDBColumn
+#' @aliases st_buffer.DuckDBColumn
+#' @aliases st_build_area.DuckDBColumn
+#' @aliases st_centroid.DuckDBColumn
+#' @aliases st_collection_extract.DuckDBColumn
+#' @aliases st_concave_hull.DuckDBColumn
+#' @aliases st_convex_hull.DuckDBColumn
+#' @aliases st_envelope.DuckDBColumn
+#' @aliases st_exterior_ring.DuckDBColumn
+#' @aliases st_flip_coordinates.DuckDBColumn
+#' @aliases st_inscribed_circle.DuckDBColumn
+#' @aliases st_line_interpolate.DuckDBColumn
+#' @aliases st_line_merge.DuckDBColumn
+#' @aliases st_line_project.DuckDBColumn
+#' @aliases st_line_substring.DuckDBColumn
+#' @aliases st_make_valid.DuckDBColumn
+#' @aliases st_minimum_rotated_rectangle.DuckDBColumn
+#' @aliases st_node.DuckDBColumn
+#' @aliases st_normalize.DuckDBColumn
+#' @aliases st_point_on_surface.DuckDBColumn
+#' @aliases st_reduce_precision.DuckDBColumn
+#' @aliases st_remove_repeated_points.DuckDBColumn
+#' @aliases st_reverse.DuckDBColumn
+#' @aliases st_simplify.DuckDBColumn
+#' @aliases st_voronoi.DuckDBColumn
 #'
-#' st_contains.DuckDBColumn
-#' st_contains_properly.DuckDBColumn
-#' st_covered_by.DuckDBColumn
-#' st_covers.DuckDBColumn
-#' st_crosses.DuckDBColumn
-#' st_disjoint.DuckDBColumn
-#' st_equals.DuckDBColumn
-#' st_intersects.DuckDBColumn
-#' st_is_within_distance.DuckDBColumn
-#' st_overlaps.DuckDBColumn
-#' st_touches.DuckDBColumn
-#' st_within.DuckDBColumn
-#' st_within_properly.DuckDBColumn
+#' @aliases st_contains.DuckDBColumn
+#' @aliases st_contains_properly.DuckDBColumn
+#' @aliases st_covered_by.DuckDBColumn
+#' @aliases st_covers.DuckDBColumn
+#' @aliases st_crosses.DuckDBColumn
+#' @aliases st_disjoint.DuckDBColumn
+#' @aliases st_equals.DuckDBColumn
+#' @aliases st_intersects.DuckDBColumn
+#' @aliases st_is_within_distance.DuckDBColumn
+#' @aliases st_overlaps.DuckDBColumn
+#' @aliases st_touches.DuckDBColumn
+#' @aliases st_within.DuckDBColumn
+#' @aliases st_within_properly.DuckDBColumn
 #'
-#' st_difference.DuckDBColumn
-#' st_intersection.DuckDBColumn
-#' st_nearest_points.DuckDBColumn
-#' st_union.DuckDBColumn
+#' @aliases st_difference.DuckDBColumn
+#' @aliases st_intersection.DuckDBColumn
+#' @aliases st_nearest_points.DuckDBColumn
+#' @aliases st_union.DuckDBColumn
 #'
-#' st_bbox.DuckDBColumn
-#' st_collect.DuckDBColumn
+#' @aliases st_bbox.DuckDBColumn
+#' @aliases st_collect.DuckDBColumn
 #'
 #' @seealso
 #' \itemize{
