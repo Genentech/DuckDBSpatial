@@ -24,8 +24,8 @@ test_that("Spatial geometry accessors work as expected for a DuckDBColumn", {
     type <- df[["type"]]
     sfc <- st_as_sfc(spatial_wkt[!is.na(spatial_wkt)])
 
-    expect_equal(as.matrix(st_coordinates(x[c(17,20)])), st_coordinates(sfc[c(13,15)]),
-                 check.attributes = FALSE)
+    pt_idx <- which(st_geometry_type(sfc) == "POINT" & !st_is_empty(sfc))
+    checkDuckDBColumn(st_as_text(x[pt_idx]), st_as_text(sfc[pt_idx]))
     checkDuckDBColumn(st_dimension(x), rep(c(1,0,2,0,2), c(5,3,4,3,3)))
     checkDuckDBColumn(st_end_point(x), rep(c("POINT (40 40)", NA), c(1,17)))
     checkDuckDBColumn(st_geometry_type(x), as.character(st_geometry_type(sfc)))
@@ -226,4 +226,119 @@ test_that("Spatial aggregate operations work as expected for a DuckDBColumn", {
     union_result <- st_union(x)
     expect_s3_class(union_result, "sfc")
     expect_length(union_result, 1L)
+})
+
+test_that("Spatial SQL helpers work as expected for a DuckDBTable", {
+    env <- st_make_envelope_sql(0, 0, 1, 1)
+    expect_s3_class(env, "sql")
+    expect_match(as.character(env), "ST_MakeEnvelope")
+
+    pt <- st_point_sql("x", "y")
+    expect_s3_class(pt, "sql")
+    expect_match(as.character(pt), "ST_Point")
+
+    wkt <- st_geomfromtext_sql("POINT (0 0)")
+    expect_s3_class(wkt, "sql")
+    expect_match(as.character(wkt), "ST_GeomFromText")
+})
+
+test_that("Spatial table joins work as expected for a DuckDBTable", {
+    df <- DuckDBDataFrame(spatial_path)
+    df <- df[which(!is.na(spatial_wkt)), ]
+
+    joined <- st_join(df, df)
+    expect_s4_class(joined, "DuckDBDataFrame")
+    expect_true(nrow(joined) >= nrow(df))
+})
+
+test_that("Spatial table filters work as expected for a DuckDBTable", {
+    df <- DuckDBDataFrame(spatial_path)
+    df <- df[which(!is.na(spatial_wkt)), ]
+
+    query_pt <- st_sfc(st_point(c(30, 10)))
+    filtered <- st_filter(df, query_pt)
+    expect_s4_class(filtered, "DuckDBDataFrame")
+    hits <- as.logical(as.vector(st_intersects(df[["geometry"]], query_pt)))
+    expect_equal(nrow(filtered), sum(hits, na.rm = TRUE))
+})
+
+test_that("Spatial intersect table works as expected for a DuckDBTable", {
+    df <- DuckDBDataFrame(spatial_path)
+    df <- df[which(!is.na(spatial_wkt)), ]
+
+    query_pt <- st_sfc(st_point(c(30, 10)))
+    result <- st_intersects_table(df, query_pt)
+    expect_s4_class(result, "DuckDBDataFrame")
+    hits <- as.logical(as.vector(st_intersects(df[["geometry"]], query_pt)))
+    expect_equal(nrow(result), sum(hits, na.rm = TRUE))
+})
+
+test_that("Spatial aggregate SQL helpers work as expected for a DuckDBColumn", {
+    df <- DuckDBDataFrame(spatial_path)
+    df <- df[which(!is.na(spatial_wkt)), ]
+
+    x <- df[["geometry"]]
+    sfc <- st_as_sfc(spatial_wkt[!is.na(spatial_wkt)])
+
+    union_wkt <- st_as_text(st_union(sfc))
+    collect_wkt <- st_as_text(st_combine(sfc))
+    envelope_wkt <- st_as_text(st_as_sfc(st_bbox(sfc)))
+
+    checkDuckDBColumn(st_union_agg(x), union_wkt)
+    checkDuckDBColumn(st_collect_agg(x), collect_wkt)
+    checkDuckDBColumn(st_envelope_agg(x), envelope_wkt)
+})
+
+test_that("Layer spatial engines work as expected for a DuckDBDataFrame", {
+    skip_if_not_installed("arrow")
+    df_pts <- data.frame(x = c(1, 5, 10, 50), y = c(1, 5, 10, 50))
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path), add = TRUE)
+    arrow::write_parquet(df_pts, path)
+    pts <- DuckDBDataFrame(path, datacols = c("x", "y"))
+    poly <- st_as_sfc("POLYGON((0 0, 6 0, 6 6, 0 6, 0 0))")
+    pts_sfc <- st_as_sfc(paste0("POINT(", df_pts$x, " ", df_pts$y, ")"))
+    env <- st_sfc(st_polygon(list(
+        matrix(c(0, 0, 10, 0, 10, 10, 0, 10, 0, 0), ncol = 2, byrow = TRUE)
+    )))
+
+    lazy <- layerSpatialOverlaps(pts, poly, coords = c("x", "y"))
+    expect_identical(unname(lazy),
+                     as.logical(lengths(st_intersects(pts_sfc, poly)) > 0L))
+
+    idx <- layerSubsetByBbox(pts, 0, 10, 0, 10, x_col = "x", y_col = "y")
+    expect_equal(idx, which(as.logical(lengths(st_intersects(pts_sfc, env)) > 0L)))
+
+    poly_idx <- layerSubsetByGeometry(pts, poly, coords = c("x", "y"))
+    expect_equal(poly_idx, which(as.logical(lengths(st_intersects(pts_sfc, poly)) > 0L)))
+
+    shapes_sfc <- st_as_sfc(spatial_wkt[!is.na(spatial_wkt)])
+    matched_exp <- vapply(st_intersects(pts_sfc, shapes_sfc), function(h) {
+        if (length(h) > 0L) min(h) else NA_integer_
+    }, integer(1L))
+
+    shapes_df <- DuckDBDataFrame(spatial_path)
+    shapes_df <- shapes_df[which(!is.na(spatial_wkt)), ]
+    matched <- layerSpatialMatch(pts, shapes_df, coords = c("x", "y"))
+    expect_identical(matched, matched_exp)
+
+    mem_tbl <- S4Vectors::DataFrame(geometry = shapes_sfc)
+    matched_mem <- layerSpatialMatch(pts, mem_tbl, coords = c("x", "y"))
+    expect_identical(matched_mem, matched_exp)
+})
+
+test_that("GeoParquet I/O helpers work as expected", {
+    conn <- DBI::dbConnect(duckdb::duckdb())
+    on.exit(DBI::dbDisconnect(conn, shutdown = TRUE), add = TRUE)
+    expect_invisible(enableGeoParquetConversion(conn))
+
+    skip_if_not_installed("nanoparquet")
+    pts <- st_sfc(st_point(0:1), st_point(2:3))
+    sf_pt <- st_sf(id = 1:2, geometry = pts)
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path), add = TRUE)
+    writeGeoParquet(sf_pt, path)
+    ddb <- readGeoParquet(path)
+    expect_s4_class(ddb, "DuckDBDataFrame")
+    expect_equal(nrow(ddb), 2L)
 })

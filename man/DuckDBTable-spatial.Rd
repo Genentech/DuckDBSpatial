@@ -134,7 +134,56 @@
 \alias{st_union.DuckDBTable}
 \alias{st_collect}
 \alias{st_collect.default}
+\alias{st_filter.DuckDBTable}
+\alias{st_join.DuckDBTable}
+\alias{st_intersects_table}
+\alias{st_make_envelope_sql}
+\alias{st_point_sql}
+\alias{st_geomfromtext_sql}
+\alias{st_union_agg}
+\alias{st_collect_agg}
+\alias{st_envelope_agg}
 \title{Spatial operations on DuckDBTable objects}
+\usage{
+st_make_envelope_sql(xmin, ymin, xmax, ymax)
+
+st_geomfromtext_sql(wkt)
+
+st_point_sql(x_col, y_col)
+
+st_intersects_table(x, y, sparse = TRUE, ...)
+
+\method{st_filter}{DuckDBTable}(x, y, ..., .predicate = st_intersects)
+
+\method{st_join}{DuckDBTable}(x, y, join = st_intersects, ...)
+
+st_union_agg(x, by = NULL, ...)
+
+st_collect_agg(x, by = NULL, ...)
+
+st_envelope_agg(x, by = NULL, ...)
+}
+\arguments{
+\item{xmin, ymin, xmax, ymax}{Bounding box limits.}
+
+\item{wkt}{A WKT character string.}
+
+\item{x_col, y_col}{Column names for x and y coordinates.}
+
+\item{x}{A \code{DuckDBColumn} or \code{DuckDBTable} geometry column.}
+
+\item{y}{A \code{DuckDBTable} or \code{DuckDBDataFrame} to join against.}
+
+\item{sparse}{Logical; return a lazy table when \code{TRUE}.}
+
+\item{...}{Ignored.}
+
+\item{.predicate}{Spatial predicate function (default \code{st_intersects}).}
+
+\item{join}{Spatial predicate function (default \code{st_intersects}).}
+
+\item{by}{Optional grouping column name(s).}
+}
 \description{
 Spatial operations on DuckDBTable objects.
 }
@@ -381,6 +430,56 @@ predicates) and returns a GEOMETRY DuckDBTable.
   \item{\code{st_union(x, y)}:}{
     Union of \code{x} and \code{y}.  Binary form only at the
     DuckDBTable level; aggregate union is available on DuckDBColumn.
+  }
+}
+}
+
+\section{Aggregate Operations}{
+
+\describe{
+  \item{\code{st_collect(x)}:}{
+    Combine all geometries into a single collection.
+  }
+  \item{\code{st_union_agg(x, by = NULL)}:}{
+    Aggregate union over a geometry column via \code{ST_Union_Agg}.
+  }
+  \item{\code{st_collect_agg(x, by = NULL)}:}{
+    Aggregate collect over a geometry column via \code{ST_Collect}.
+  }
+  \item{\code{st_envelope_agg(x, by = NULL)}:}{
+    Aggregate envelope over a geometry column via \code{ST_Envelope_Agg}.
+  }
+}
+}
+
+\section{Table Filter, Join, and Sparse Intersects}{
+
+\describe{
+  \item{\code{st_filter(x, y, .predicate = st_intersects)}:}{
+    Return rows of \code{x} that spatially match \code{y}.
+  }
+  \item{\code{st_join(x, y, join = st_intersects)}:}{
+    Spatial inner join of two lazy tables on \code{geometry}.
+  }
+  \item{\code{st_intersects_table(x, y, sparse = TRUE)}:}{
+    Return a sparse index table of intersecting row pairs.
+  }
+}
+}
+
+\section{SQL Geometry Helpers}{
+
+Low-level helpers that return \code{dplyr::sql} expressions for use in
+lazy queries.
+\describe{
+  \item{\code{st_make_envelope_sql(xmin, ymin, xmax, ymax)}:}{
+    Bounding-box envelope expression via \code{ST_MakeEnvelope}.
+  }
+  \item{\code{st_point_sql(x_col, y_col)}:}{
+    Point expression from column names via \code{ST_Point}.
+  }
+  \item{\code{st_geomfromtext_sql(wkt)}:}{
+    Geometry expression from WKT via \code{ST_GeomFromText}.
   }
 }
 }

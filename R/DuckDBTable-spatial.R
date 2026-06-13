@@ -236,6 +236,50 @@
 #'   }
 #' }
 #'
+#' @section Aggregate Operations:
+#' \describe{
+#'   \item{\code{st_collect(x)}:}{
+#'     Combine all geometries into a single collection.
+#'   }
+#'   \item{\code{st_union_agg(x, by = NULL)}:}{
+#'     Aggregate union over a geometry column via \code{ST_Union_Agg}.
+#'   }
+#'   \item{\code{st_collect_agg(x, by = NULL)}:}{
+#'     Aggregate collect over a geometry column via \code{ST_Collect}.
+#'   }
+#'   \item{\code{st_envelope_agg(x, by = NULL)}:}{
+#'     Aggregate envelope over a geometry column via \code{ST_Envelope_Agg}.
+#'   }
+#' }
+#'
+#' @section Table Filter, Join, and Sparse Intersects:
+#' \describe{
+#'   \item{\code{st_filter(x, y, .predicate = st_intersects)}:}{
+#'     Return rows of \code{x} that spatially match \code{y}.
+#'   }
+#'   \item{\code{st_join(x, y, join = st_intersects)}:}{
+#'     Spatial inner join of two lazy tables on \code{geometry}.
+#'   }
+#'   \item{\code{st_intersects_table(x, y, sparse = TRUE)}:}{
+#'     Return a sparse index table of intersecting row pairs.
+#'   }
+#' }
+#'
+#' @section SQL Geometry Helpers:
+#' Low-level helpers that return \code{dplyr::sql} expressions for use in
+#' lazy queries.
+#' \describe{
+#'   \item{\code{st_make_envelope_sql(xmin, ymin, xmax, ymax)}:}{
+#'     Bounding-box envelope expression via \code{ST_MakeEnvelope}.
+#'   }
+#'   \item{\code{st_point_sql(x_col, y_col)}:}{
+#'     Point expression from column names via \code{ST_Point}.
+#'   }
+#'   \item{\code{st_geomfromtext_sql(wkt)}:}{
+#'     Geometry expression from WKT via \code{ST_GeomFromText}.
+#'   }
+#' }
+#'
 #' @author Patrick Aboyoun
 #'
 #' @seealso
@@ -384,6 +428,16 @@
 #' @aliases st_collect
 #' @aliases st_collect.default
 #'
+#' @aliases st_filter.DuckDBTable
+#' @aliases st_join.DuckDBTable
+#' @aliases st_intersects_table
+#' @aliases st_make_envelope_sql
+#' @aliases st_point_sql
+#' @aliases st_geomfromtext_sql
+#' @aliases st_union_agg
+#' @aliases st_collect_agg
+#' @aliases st_envelope_agg
+#'
 #' @keywords utilities methods
 #'
 #' @name DuckDBTable-spatial
@@ -399,6 +453,8 @@ replaceSlots <- BiocGenerics:::replaceSlots
 #' @importFrom sf st_as_text
 #' @importFrom dplyr sql
 .geom_to_sql <- function(y) {
+    if (inherits(y, "sql"))
+        return(y)
     if (is.call(y))
         return(y)
     if (is.character(y))
@@ -411,6 +467,13 @@ replaceSlots <- BiocGenerics:::replaceSlots
         return(sql(sprintf("ST_GeomFromText('%s')", sf::st_as_text(y[[1L]]))))
     }
     stop("unsupported geometry type: ", class(y)[1L])
+}
+
+#' @rdname DuckDBTable-spatial
+#' @param xmin,ymin,xmax,ymax Bounding box limits.
+#' @export
+st_make_envelope_sql <- function(xmin, ymin, xmax, ymax) {
+    .st_make_envelope_sql(xmin, ymin, xmax, ymax)
 }
 
 .st_point_sql <- function(x_expr, y_expr) {
@@ -1141,3 +1204,155 @@ st_collect <- function(x, ...) UseMethod("st_collect")
 
 #' @export
 st_collect.default <- function(x, ...) sf::st_combine(x, ...)
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Spatial filter, join, sparse intersects
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+#' @rdname DuckDBTable-spatial
+#' @param wkt A WKT character string.
+#' @export
+st_geomfromtext_sql <- function(wkt) .geom_to_sql(wkt)
+
+#' @rdname DuckDBTable-spatial
+#' @param x_col,y_col Column names for x and y coordinates.
+#' @importFrom dplyr sql
+#' @export
+st_point_sql <- function(x_col, y_col) {
+    sql(sprintf('ST_Point("%s", "%s")', x_col, y_col))
+}
+
+#' @importFrom DuckDBDataFrame DuckDBDataFrame tblconn dbconn
+#' @importFrom dbplyr sql_render
+#' @importFrom dplyr sql tbl
+.lazy_sql_ddf <- function(conn, sql_txt) {
+    DuckDBDataFrame(tbl(conn, sql(sql_txt)))
+}
+
+#' @rdname DuckDBTable-spatial
+#' @param x A \code{DuckDBTable} or \code{DuckDBDataFrame}.
+#' @param y A geometry to test against.
+#' @param sparse Logical; return a lazy table when \code{TRUE}.
+#' @param ... Ignored.
+#' @importFrom DuckDBDataFrame DuckDBDataFrame tblconn dbconn
+#' @importFrom dbplyr sql_render
+#' @importFrom DBI dbGetQuery
+#' @export
+st_intersects_table <- function(x, y, sparse = TRUE, ...) {
+    if (!is(x, "DuckDBTable"))
+        stop("'x' must be a DuckDBTable or DuckDBDataFrame")
+    y_sql <- .geom_to_sql(y)
+    conn <- dbconn(x)
+    x_q <- sql_render(tblconn(x, select = FALSE))
+    sql_txt <- sprintf(
+        paste0("SELECT row_number() OVER () AS id_x, t.__rowid__ AS id_y ",
+               "FROM (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) t ",
+               "WHERE ST_Intersects(t.geometry, %s)"),
+        x_q, as.character(y_sql))
+    if (isTRUE(sparse)) {
+        .lazy_sql_ddf(conn, sql_txt)
+    } else {
+        sql_txt
+    }
+}
+
+#' @rdname DuckDBTable-spatial
+#' @param x A \code{DuckDBTable} or \code{DuckDBDataFrame}.
+#' @param y A geometry to test against.
+#' @param .predicate Spatial predicate function (default \code{st_intersects}).
+#' @param ... Passed to \code{.predicate}.
+#' @exportS3Method sf::st_filter
+#' @importFrom sf st_filter st_intersects
+st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
+    geom <- x[["geometry"]]
+    hits <- .predicate(geom, y, ...)
+    if (is(hits, "DuckDBColumn")) {
+        x[hits, , drop = FALSE]
+    } else {
+        hits <- as.logical(hits)
+        idx <- which(hits)
+        if (length(idx))
+            x[idx, , drop = FALSE]
+        else
+            x[integer(0L), , drop = FALSE]
+    }
+}
+
+#' @rdname DuckDBTable-spatial
+#' @param x A \code{DuckDBTable} or \code{DuckDBDataFrame}.
+#' @param y A \code{DuckDBTable} or \code{DuckDBDataFrame} to join against.
+#' @param join Spatial predicate function (default \code{st_intersects}).
+#' @param ... Ignored.
+#' @exportS3Method sf::st_join
+#' @importFrom DuckDBDataFrame DuckDBDataFrame tblconn dbconn
+#' @importFrom dbplyr sql_render
+#' @importFrom sf st_join st_intersects
+st_join.DuckDBTable <- function(x, y, join = st_intersects, ...) {
+    conn <- dbconn(x)
+    x_q <- sql_render(tblconn(x, select = FALSE))
+    y_q <- sql_render(tblconn(y, select = FALSE))
+    sql_txt <- sprintf(
+        "SELECT x.*, y.* FROM (%s) x INNER JOIN (%s) y ON ST_Intersects(x.geometry, y.geometry)",
+        x_q, y_q)
+    .lazy_sql_ddf(conn, sql_txt)
+}
+
+#' @importFrom DuckDBDataFrame DuckDBTable tblconn
+#' @importFrom dplyr group_by summarize
+#' @importFrom S4Vectors new2
+.spatial_geometry_agg <- function(x, fun, by = NULL) {
+    if (is(x, "DuckDBTable"))
+        x <- x@datacols[[1L]]
+    if (!is(x, "DuckDBColumn"))
+        stop("'x' must be a DuckDBColumn or DuckDBTable with a geometry column")
+    table <- x@table
+    geom <- table@datacols[[1L]]
+    conn <- tblconn(x, select = FALSE)
+    aggr <- list(geometry = call("ST_AsText", call(fun, geom)))
+    if (is.null(by)) {
+        conn <- summarize(conn, !!!aggr)
+    } else {
+        conn <- summarize(group_by(conn, !!!lapply(by, as.name)), !!!aggr)
+    }
+    new2("DuckDBColumn", table = DuckDBTable(conn, datacols = "geometry"), check = FALSE)
+}
+
+#' @rdname DuckDBTable-spatial
+#' @param x A \code{DuckDBColumn} or \code{DuckDBTable} geometry column.
+#' @param by Optional grouping column name(s).
+#' @param ... Ignored.
+#' @export
+st_union_agg <- function(x, by = NULL, ...) {
+    .spatial_geometry_agg(x, "ST_Union_Agg", by = by)
+}
+
+#' @rdname DuckDBTable-spatial
+#' @param x A \code{DuckDBColumn} or \code{DuckDBTable} geometry column.
+#' @param by Optional grouping column name(s).
+#' @param ... Ignored.
+#' @export
+st_collect_agg <- function(x, by = NULL, ...) {
+    if (is(x, "DuckDBTable"))
+        x <- x@datacols[[1L]]
+    if (!is(x, "DuckDBColumn"))
+        stop("'x' must be a DuckDBColumn or DuckDBTable with a geometry column")
+    table <- x@table
+    geom <- table@datacols[[1L]]
+    conn <- tblconn(x, select = FALSE)
+    aggr <- list(geometry = call("ST_AsText", call("ST_Collect", call("list", geom))))
+    if (is.null(by)) {
+        conn <- summarize(conn, !!!aggr)
+    } else {
+        conn <- summarize(group_by(conn, !!!lapply(by, as.name)), !!!aggr)
+    }
+    new2("DuckDBColumn", table = DuckDBTable(conn, datacols = "geometry"), check = FALSE)
+}
+
+#' @rdname DuckDBTable-spatial
+#' @param x A \code{DuckDBColumn} or \code{DuckDBTable} geometry column.
+#' @param by Optional grouping column name(s).
+#' @param ... Ignored.
+#' @export
+st_envelope_agg <- function(x, by = NULL, ...) {
+    .spatial_geometry_agg(x, "ST_Envelope_Agg", by = by)
+}
