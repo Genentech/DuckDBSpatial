@@ -325,6 +325,18 @@
 #'
 #' @keywords utilities methods
 #'
+#' @return
+#' Method return types are documented in the sections above.
+#'
+#' @examples
+#' spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
+#' df <- DuckDBDataFrame(spatial_path)
+#' df <- df[which(!is.na(df$type)), ]
+#' geom <- df[["geometry"]]
+#' st_geometry_type(geom)[1:3]
+#' st_area(geom)[1:3]
+#' st_intersects(geom, sf::st_sfc(sf::st_point(c(30, 10))))[1:3]
+#'
 #' @name DuckDBColumn-spatial
 NULL
 

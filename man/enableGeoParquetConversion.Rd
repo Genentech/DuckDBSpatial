@@ -17,3 +17,7 @@ The connection, invisibly.
 Sets \code{enable_geoparquet_conversion = true} so geometry columns in
 Parquet files are read as native \code{GEOMETRY} types.
 }
+\examples{
+enableGeoParquetConversion()
+
+}

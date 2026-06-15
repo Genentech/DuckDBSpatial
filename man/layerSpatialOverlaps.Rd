@@ -22,3 +22,12 @@ Logical vector of length \code{nrow(x)}.
 Layer-level intersection predicate for \link[DuckDBDataFrame:DuckDBDataFrame-class]{DuckDBDataFrame}
 objects. Accepts coordinate columns or a geometry column.
 }
+\examples{
+pts_path <- tempfile(fileext = ".csv")
+on.exit(unlink(pts_path), add = TRUE)
+write.csv(data.frame(x = c(1, 5, 10), y = c(1, 5, 10)), pts_path, row.names = FALSE)
+pts <- DuckDBDataFrame(pts_path, datacols = c("x", "y"))
+poly <- sf::st_as_sfc("POLYGON((0 0, 6 0, 6 6, 0 6, 0 0))")
+layerSpatialOverlaps(pts, poly, coords = c("x", "y"))
+
+}

@@ -21,3 +21,12 @@ Integer row indices.
 \description{
 Row indices of a layer intersecting a geometry
 }
+\examples{
+pts_path <- tempfile(fileext = ".csv")
+on.exit(unlink(pts_path), add = TRUE)
+write.csv(data.frame(x = c(1, 5, 10), y = c(1, 5, 10)), pts_path, row.names = FALSE)
+pts <- DuckDBDataFrame(pts_path, datacols = c("x", "y"))
+poly <- sf::st_as_sfc("POLYGON((0 0, 6 0, 6 6, 0 6, 0 0))")
+layerSubsetByGeometry(pts, poly, coords = c("x", "y"))
+
+}

@@ -12,6 +12,9 @@
 #'
 #' @return The connection, invisibly.
 #'
+#' @examples
+#' enableGeoParquetConversion()
+#'
 #' @export
 #' @importFrom DBI dbExecute
 #' @importFrom DuckDBDataFrame acquireDuckDBConn
@@ -31,6 +34,12 @@ enableGeoParquetConversion <- function(conn = NULL) {
 #' @param ... Passed to \code{\link[DuckDBDataFrame]{DuckDBDataFrame}}.
 #'
 #' @return A \link[DuckDBDataFrame:DuckDBDataFrame-class]{DuckDBDataFrame}.
+#'
+#' @examples
+#' spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
+#' ddb <- readGeoParquet(spatial_path)
+#' nrow(ddb)
+#' colnames(ddb)
 #'
 #' @export
 #' @importFrom DuckDBDataFrame DuckDBDataFrame

@@ -17,3 +17,10 @@ A \link[DuckDBDataFrame:DuckDBDataFrame-class]{DuckDBDataFrame}.
 \description{
 Read a GeoParquet file as a lazy \code{DuckDBDataFrame}
 }
+\examples{
+spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
+ddb <- readGeoParquet(spatial_path)
+nrow(ddb)
+colnames(ddb)
+
+}

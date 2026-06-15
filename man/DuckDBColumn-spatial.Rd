@@ -67,6 +67,9 @@
 \alias{st_bbox.DuckDBColumn}
 \alias{st_collect.DuckDBColumn}
 \title{Spatial operations on DuckDBColumn objects}
+\value{
+Method return types are documented in the sections above.
+}
 \description{
 Spatial operations on DuckDBColumn objects.
 }
@@ -324,6 +327,16 @@ These methods materialise and return concrete R objects.
 }
 }
 
+\examples{
+spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
+df <- DuckDBDataFrame(spatial_path)
+df <- df[which(!is.na(df$type)), ]
+geom <- df[["geometry"]]
+st_geometry_type(geom)[1:3]
+st_area(geom)[1:3]
+st_intersects(geom, sf::st_sfc(sf::st_point(c(30, 10))))[1:3]
+
+}
 \seealso{
 \itemize{
   \item \code{\link[DuckDBDataFrame]{DuckDBColumn-class}} for the main class

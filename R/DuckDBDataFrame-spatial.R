@@ -54,6 +54,14 @@
 #'
 #' @return Logical vector of length \code{nrow(x)}.
 #'
+#' @examples
+#' pts_path <- tempfile(fileext = ".csv")
+#' on.exit(unlink(pts_path), add = TRUE)
+#' write.csv(data.frame(x = c(1, 5, 10), y = c(1, 5, 10)), pts_path, row.names = FALSE)
+#' pts <- DuckDBDataFrame(pts_path, datacols = c("x", "y"))
+#' poly <- sf::st_as_sfc("POLYGON((0 0, 6 0, 6 6, 0 6, 0 0))")
+#' layerSpatialOverlaps(pts, poly, coords = c("x", "y"))
+#'
 #' @export
 #' @importClassesFrom DuckDBDataFrame DuckDBDataFrame DuckDBColumn
 #' @importFrom DuckDBDataFrame tblconn
@@ -88,6 +96,16 @@ layerSpatialOverlaps <- function(x, y, coords = NULL, geom = "geometry") {
 #'
 #' @return Integer vector of match indices (NA where unmatched).
 #'
+#' @examples
+#' spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
+#' shapes <- DuckDBDataFrame(spatial_path)
+#' shapes <- shapes[which(!is.na(shapes$type)), ]
+#' pts_path <- tempfile(fileext = ".csv")
+#' on.exit(unlink(pts_path), add = TRUE)
+#' write.csv(data.frame(x = c(1, 5, 30), y = c(1, 5, 10)), pts_path, row.names = FALSE)
+#' pts <- DuckDBDataFrame(pts_path, datacols = c("x", "y"))
+#' layerSpatialMatch(pts, shapes, coords = c("x", "y"))
+#'
 #' @export
 #' @importClassesFrom DuckDBDataFrame DuckDBDataFrame
 #' @importClassesFrom S4Vectors DataFrame
@@ -121,6 +139,13 @@ layerSpatialMatch <- function(x, table, coords, geom = "geometry", join = NULL) 
 #'
 #' @return Integer row indices.
 #'
+#' @examples
+#' pts_path <- tempfile(fileext = ".csv")
+#' on.exit(unlink(pts_path), add = TRUE)
+#' write.csv(data.frame(x = c(1, 5, 10), y = c(1, 5, 10)), pts_path, row.names = FALSE)
+#' pts <- DuckDBDataFrame(pts_path, datacols = c("x", "y"))
+#' layerSubsetByBbox(pts, 0, 10, 0, 10, x_col = "x", y_col = "y")
+#'
 #' @export
 layerSubsetByBbox <- function(x, xmin, xmax, ymin, ymax,
                               x_col = "x", y_col = "y", geom = "geometry") {
@@ -153,6 +178,14 @@ layerSubsetByBbox <- function(x, xmin, xmax, ymin, ymax,
 #' @param geom Geometry column name for polygon layers.
 #'
 #' @return Integer row indices.
+#'
+#' @examples
+#' pts_path <- tempfile(fileext = ".csv")
+#' on.exit(unlink(pts_path), add = TRUE)
+#' write.csv(data.frame(x = c(1, 5, 10), y = c(1, 5, 10)), pts_path, row.names = FALSE)
+#' pts <- DuckDBDataFrame(pts_path, datacols = c("x", "y"))
+#' poly <- sf::st_as_sfc("POLYGON((0 0, 6 0, 6 6, 0 6, 0 0))")
+#' layerSubsetByGeometry(pts, poly, coords = c("x", "y"))
 #'
 #' @export
 layerSubsetByGeometry <- function(x, y, coords = NULL, geom = "geometry") {

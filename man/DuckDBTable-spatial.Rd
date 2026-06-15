@@ -184,6 +184,9 @@ st_envelope_agg(x, by = NULL, ...)
 
 \item{by}{Optional grouping column name(s).}
 }
+\value{
+Method return types are documented in the sections above.
+}
 \description{
 Spatial operations on DuckDBTable objects.
 }
@@ -484,6 +487,16 @@ lazy queries.
 }
 }
 
+\examples{
+spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
+df <- DuckDBDataFrame(spatial_path)
+df <- df[which(!is.na(df$type)), ]
+query_pt <- sf::st_sfc(sf::st_point(c(30, 10)))
+filtered <- st_filter(df, query_pt)
+nrow(filtered)
+st_make_envelope_sql(0, 0, 100, 100)
+
+}
 \seealso{
 \itemize{
   \item \code{\link[DuckDBDataFrame]{DuckDBTable-class}} for the main class
