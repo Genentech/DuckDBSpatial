@@ -1,0 +1,150 @@
+---
+title: "Design and extension of DuckDBSpatial"
+author:
+- name: Patrick Aboyoun
+  email: aboyounp@gene.com
+  affiliation: Genentech, Inc.
+date: "Compiled: `r BiocStyle::doc_date()`; Modified: 6 July 2026"
+package: DuckDBSpatial
+vignette: >
+  %\VignetteIndexEntry{2. Design and extension of DuckDBSpatial}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+output:
+  BiocStyle::html_document:
+    number_sections: true
+    toc: true
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+library(BiocStyle)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      error = FALSE, warning = FALSE, message = FALSE)
+```
+
+# Scope
+
+This vignette is for developers: it documents how `r Biocpkg("DuckDBSpatial")`
+implements `r CRANpkg("sf")`-compatible spatial operations on
+`r Biocpkg("DuckDBDataFrame")` objects, how those operations become DuckDB spatial
+SQL, and how GeoParquet I/O works. For day-to-day use see *Introduction to
+DuckDBSpatial*.
+
+```{r load}
+library(DuckDBSpatial)
+library(sf)
+```
+
+# Architecture
+
+`r Biocpkg("DuckDBSpatial")` adds a spatial method layer to the two core
+`r Biocpkg("DuckDBDataFrame")` classes, backed by DuckDB's native spatial
+extension:
+
+| Target | What it carries | Spatial API |
+|--------|-----------------|-------------|
+| `DuckDBColumn` | one lazy `GEOMETRY` column | `st_area()`, `st_centroid()`, ... on a single column |
+| `DuckDBDataFrame` / `DuckDBTable` | a table with a geometry column | table-level `st_filter()`, `st_join()`, predicates |
+
+The methods are registered as S3 methods on the `r CRANpkg("sf")` generics
+(`st_area.DuckDBColumn`, `st_intersects.DuckDBTable`, ...), so existing `sf`-based
+code dispatches to them automatically. None of them materialize geometries: each
+records a SQL expression on the underlying `DuckDBDataFrame`, evaluated only when
+values are pulled. The DuckDB spatial extension is loaded lazily on the shared
+connection (as an optional extension, so a build without it degrades rather than
+fails).
+
+# From sf generics to spatial SQL
+
+Every spatial method translates its `r CRANpkg("sf")` generic to the
+corresponding DuckDB `ST_*` function, applied to the geometry column inside the
+lazy query. A measurement such as `st_area()` becomes
+
+```sql
+SELECT ST_Area(geometry) FROM layer
+```
+
+a transform such as `st_centroid()` becomes `ST_Centroid(geometry)`, and a
+predicate against a query geometry `q` becomes a boolean column:
+
+```sql
+SELECT ST_Intersects(geometry, ST_GeomFromText('<q as WKT>')) FROM layer
+```
+
+Because these are ordinary columns in the query, DuckDB applies its usual
+optimizations --- column pruning (only the geometry column is read) and predicate
+pushdown (a spatial filter is evaluated during the Parquet scan). The result of a
+column method is a lazy `DuckDBColumn`; the result of `st_filter()` is a lazy
+`DuckDBDataFrame`.
+
+```{r sql-demo}
+spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
+df <- DuckDBDataFrame(spatial_path)
+df <- df[which(!is.na(df$type)), ]
+
+area <- st_area(df[["geometry"]])   # records ST_Area(geometry); nothing computed yet
+class(area)
+head(as.vector(area))               # pulled from DuckDB on demand
+```
+
+# Two dispatch paths
+
+There are two ways to run a spatial query, depending on how coordinates are
+stored:
+
+- **Geometry-column methods** --- the `r CRANpkg("sf")` generics above, for tables
+  that carry a `GEOMETRY` column (native DuckDB geometry, or WKB read from
+  GeoParquet).
+- **Layer-level engines** (`layerSpatialOverlaps()`, `layerSubsetByGeometry()`,
+  `layerSubsetByBbox()`, `layerSpatialMatch()`) --- for tables that store plain
+  coordinate columns (`x`, `y`) with no geometry column. These construct points
+  from the coordinates inside the query (`ST_Point(x, y)`) and apply the predicate
+  against a supplied geometry, which is the common shape for
+  spatial-transcriptomics centroids.
+
+Both paths run entirely in DuckDB; the choice is only about the on-disk column
+layout.
+
+# GeoParquet I/O
+
+`readGeoParquet()` opens a GeoParquet file, enabling DuckDB's GeoParquet
+conversion so the geometry column is exposed as a native `GEOMETRY`, and returns a
+lazy `DuckDBDataFrame`. `writeGeoParquet()` writes an `r CRANpkg("sf")` object as
+[GeoParquet 1.0](https://geoparquet.org/):
+
+- geometries are encoded as **Well-Known Binary (WKB)**;
+- a `geo` file-metadata key records the version, the primary geometry column, and
+  per-column encoding, geometry types, and bounding box;
+- the result is readable by GeoPandas, GDAL, QGIS, DuckDB, and `r CRANpkg("sf")`.
+
+```{r geoparquet, eval=requireNamespace("nanoparquet", quietly=TRUE)}
+pts_sf <- st_sf(id = 1:2, geometry = st_sfc(st_point(0:1), st_point(2:3)))
+path <- tempfile(fileext = ".parquet")
+writeGeoParquet(pts_sf, path)
+readGeoParquet(path)
+unlink(path)
+```
+
+GeoParquet metadata generation uses the suggested `r CRANpkg("nanoparquet")` and
+`r CRANpkg("jsonlite")` packages; `writeGeoParquet()` errors with an install hint
+if they are absent.
+
+# Extending, and the BiocDuckDB integration
+
+Adding a spatial method means registering an S3 method on the `r CRANpkg("sf")`
+generic for `DuckDBColumn` (and/or `DuckDBTable`) that emits the appropriate
+`ST_*` expression --- everything else (laziness, connection, materialization)
+comes from `r Biocpkg("DuckDBDataFrame")`.
+
+The main consumer is `r Biocpkg("BiocDuckDB")`: a `MultiAssaySpatialExperiment`
+writes its spatial layers (cell boundaries, landmarks) as GeoParquet via
+`writeGeoParquet()`, and reads them back as lazy `DuckDBDataFrame`s with
+`GEOMETRY` columns --- so a spatial experiment keeps its geometry on disk and
+queries it through the same `r CRANpkg("sf")` API used here.
+
+# Session information
+
+```{r sessioninfo}
+sessionInfo()
+```

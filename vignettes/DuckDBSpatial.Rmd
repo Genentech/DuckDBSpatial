@@ -1,0 +1,167 @@
+---
+title: "Introduction to DuckDBSpatial"
+author:
+- name: Patrick Aboyoun
+  email: aboyounp@gene.com
+  affiliation: Genentech, Inc.
+date: "Compiled: `r BiocStyle::doc_date()`; Modified: 6 July 2026"
+package: DuckDBSpatial
+vignette: >
+  %\VignetteIndexEntry{1. Introduction to DuckDBSpatial}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+output:
+  BiocStyle::html_document:
+    number_sections: true
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+library(BiocStyle)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      error = FALSE, warning = FALSE, message = FALSE)
+```
+
+# Introduction
+
+Spatial datasets are increasingly large: a spatial-transcriptomics experiment can
+carry millions of transcript centroids and cell-boundary polygons, and imaging or
+geographic layers run to hundreds of millions of features. The
+[sf](https://r-spatial.github.io/sf/) package is the standard R interface for such
+data --- `st_area()`, `st_intersects()`, `st_centroid()` --- but an ordinary `sf`
+object holds every geometry in memory.
+
+`r Biocpkg("DuckDBSpatial")` extends `r Biocpkg("DuckDBDataFrame")` with
+`r CRANpkg("sf")`-compatible spatial methods that run on **DuckDB-backed columns
+and tables**, powered by DuckDB's native spatial extension. The geometries stay
+**on disk** in columnar Parquet, and spatial operations are recorded as lazy SQL
+that DuckDB pushes down --- so you can measure, filter, and transform geometries
+**without loading the layer into memory**. It reads and writes **GeoParquet 1.0**,
+so the same files interoperate with GeoPandas, GDAL, QGIS, and DuckDB itself.
+
+Within the **BiocDuckDB** suite it is the spatial layer: it is what
+`r Biocpkg("DuckDBDataFrame")` uses to serve `GEOMETRY` columns, and it underpins
+the `MultiAssaySpatialExperiment` on-disk format in `r Biocpkg("BiocDuckDB")`.
+
+This vignette is a practical introduction. For how the `sf` generics map onto
+DuckDB spatial SQL and how GeoParquet I/O works, see *Design and extension of
+DuckDBSpatial*.
+
+## Installation
+
+```{r install, eval=FALSE}
+if (!require("BiocManager"))
+    install.packages("BiocManager")
+BiocManager::install("DuckDBSpatial")
+```
+
+```{r load}
+library(DuckDBSpatial)
+library(sf)
+```
+
+The DuckDB spatial extension loads automatically the first time a spatial
+operation runs (it is fetched once and cached).
+
+# Lazy spatial columns
+
+The package bundles a small example layer as partitioned Parquet. Open it as a
+lazy `DuckDBDataFrame` and apply `r CRANpkg("sf")` generics to the geometry column
+without materializing the table.
+
+```{r columns}
+spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
+df <- DuckDBDataFrame(spatial_path)
+df <- df[which(!is.na(df$type)), ]
+
+geom <- df[["geometry"]]
+head(st_geometry_type(geom))
+head(st_area(geom))
+```
+
+Measurements (`st_area()`, `st_length()`, `st_perimeter()`) and geometry
+transforms (`st_centroid()`, `st_buffer()`, `st_convex_hull()`) all return **lazy
+`DuckDBColumn`s** --- nothing is computed until the values are pulled:
+
+```{r transforms}
+centroids <- st_centroid(geom)
+class(centroids)
+head(st_as_text(centroids))
+```
+
+# Spatial predicates and filtering
+
+Spatial predicates (`st_intersects()`, `st_within()`, `st_contains()`, ...) build
+SQL against a query geometry and stay lazy:
+
+```{r predicates}
+query_pt <- st_sfc(st_point(c(30, 10)))
+hits <- st_intersects(geom, query_pt)
+head(as.vector(hits))
+```
+
+The table-level `st_filter()` is the convenient way to keep only the rows whose
+geometry satisfies a predicate against a query --- evaluated in DuckDB:
+
+```{r filter}
+filtered <- st_filter(df, query_pt)
+nrow(filtered)
+```
+
+# Layer-level engines for coordinate columns
+
+Point data often lives as plain `x`/`y` columns (for example transcript
+centroids) rather than a geometry column. The `layer*` helpers run spatial
+queries directly on coordinate columns, so no geometry column is needed:
+
+```{r layers}
+pts_path <- tempfile(fileext = ".csv")
+write.csv(data.frame(x = c(1, 5, 30), y = c(1, 5, 10)), pts_path, row.names = FALSE)
+pts <- DuckDBDataFrame(pts_path, datacols = c("x", "y"))
+
+poly <- st_as_sfc("POLYGON((0 0, 6 0, 6 6, 0 6, 0 0))")
+layerSpatialOverlaps(pts, poly, coords = c("x", "y"))   # which points fall in poly
+layerSubsetByGeometry(pts, poly, coords = c("x", "y"))  # row indices inside poly
+unlink(pts_path)
+```
+
+# GeoParquet I/O
+
+`readGeoParquet()` opens a GeoParquet file as a lazy `DuckDBDataFrame` with a
+native `GEOMETRY` column; `writeGeoParquet()` writes an `r CRANpkg("sf")` object
+with GeoParquet 1.0 metadata (requires the suggested `r CRANpkg("nanoparquet")`
+package). The result is readable by any GeoParquet-aware tool.
+
+```{r geoparquet-read}
+ddb <- readGeoParquet(spatial_path)
+nrow(ddb)
+```
+
+```{r geoparquet-write, eval=requireNamespace("nanoparquet", quietly=TRUE)}
+pts_sf <- st_sf(id = 1:2,
+                geometry = st_sfc(st_point(0:1), st_point(2:3)))
+path <- tempfile(fileext = ".parquet")
+writeGeoParquet(pts_sf, path)
+readGeoParquet(path)
+unlink(path)
+```
+
+# When to use DuckDBSpatial
+
+A good fit when the spatial layer is **larger than memory**, when the workload is
+**filter-heavy** (selecting features by region or predicate before the expensive
+step), or when the data lives on disk as **GeoParquet** shared with other spatial
+tooling. An in-memory `r CRANpkg("sf")` object remains preferable for small layers
+and for interactive geometry editing.
+
+Within `r Biocpkg("BiocDuckDB")`, `r Biocpkg("DuckDBSpatial")` is what makes a
+`MultiAssaySpatialExperiment` hold its cell boundaries and landmarks on disk as
+lazy `GEOMETRY` columns. For the SQL translation and GeoParquet details, see
+*Design and extension of DuckDBSpatial*.
+
+# Session information
+
+```{r sessioninfo}
+sessionInfo()
+```

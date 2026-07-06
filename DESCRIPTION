@@ -1,6 +1,6 @@
 Package: DuckDBSpatial
-Version: 0.9.6
-Date: 2026-06-15
+Version: 0.9.7
+Date: 2026-07-06
 Title: DuckDB-Backed Spatial Data Structures
 Description:
     Provides DuckDB-backed implementations of spatial data structures for efficient
@@ -16,7 +16,7 @@ Authors@R:
     )
 License: Apache License 2.0
 Depends:
-    R (>= 4.4.0),
+    R (>= 4.6.0),
     methods,
     DuckDBDataFrame,
     sf
