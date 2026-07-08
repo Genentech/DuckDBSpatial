@@ -1,3 +1,13 @@
+# DuckDBSpatial 0.9.8
+
+## Documentation
+
+- Made the vignettes resilient to a missing DuckDB `spatial` extension: a setup
+  probe (`.spatial_ok`) gates the live spatial chunks, so `R CMD build` and the
+  modl-docs render succeed (with a short note) where the extension cannot be
+  obtained (e.g. an offline developer machine or a restricted CI network), and
+  render the examples for real where it is available.
+
 # DuckDBSpatial 0.9.7
 
 ## Documentation

@@ -21,6 +21,21 @@ output:
 library(BiocStyle)
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
                       error = FALSE, warning = FALSE, message = FALSE)
+
+# Gate the live spatial examples on the DuckDB spatial extension being available, so
+# the vignette still builds where it cannot be obtained (e.g. offline dev machines);
+# CI / a networked build renders them for real.
+.spatial_ok <- tryCatch({
+    con <- DuckDBDataFrame::acquireDuckDBConn()
+    DBI::dbGetQuery(con,
+        "SELECT ST_Area(ST_GeomFromText('POLYGON((0 0,0 1,1 1,1 0,0 0))')) AS a")
+    TRUE
+}, error = function(e) FALSE)
+```
+
+```{r spatial-unavailable-note, echo=FALSE, results='asis', eval=!.spatial_ok}
+cat("> **Note:** DuckDB's `spatial` extension could not be loaded in this build ",
+    "environment, so the live examples below are shown but not evaluated.\n", sep = "")
 ```
 
 # Scope
@@ -51,9 +66,10 @@ The methods are registered as S3 methods on the `r CRANpkg("sf")` generics
 (`st_area.DuckDBColumn`, `st_intersects.DuckDBTable`, ...), so existing `sf`-based
 code dispatches to them automatically. None of them materialize geometries: each
 records a SQL expression on the underlying `DuckDBDataFrame`, evaluated only when
-values are pulled. The DuckDB spatial extension is loaded lazily on the shared
-connection (as an optional extension, so a build without it degrades rather than
-fails).
+values are pulled. The DuckDB spatial extension is obtained on demand --- DuckDB
+autoloads it on first use of an `ST_*` function (fetching from the configured
+extension repository, or loading a pre-provisioned copy from the extension
+directory), so callers never manage it explicitly.
 
 # From sf generics to spatial SQL
 
@@ -78,7 +94,7 @@ pushdown (a spatial filter is evaluated during the Parquet scan). The result of 
 column method is a lazy `DuckDBColumn`; the result of `st_filter()` is a lazy
 `DuckDBDataFrame`.
 
-```{r sql-demo}
+```{r sql-demo, eval=.spatial_ok}
 spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
 df <- DuckDBDataFrame(spatial_path)
 df <- df[which(!is.na(df$type)), ]
@@ -118,7 +134,7 @@ lazy `DuckDBDataFrame`. `writeGeoParquet()` writes an `r CRANpkg("sf")` object a
   per-column encoding, geometry types, and bounding box;
 - the result is readable by GeoPandas, GDAL, QGIS, DuckDB, and `r CRANpkg("sf")`.
 
-```{r geoparquet, eval=requireNamespace("nanoparquet", quietly=TRUE)}
+```{r geoparquet, eval=.spatial_ok && requireNamespace("nanoparquet", quietly=TRUE)}
 pts_sf <- st_sf(id = 1:2, geometry = st_sfc(st_point(0:1), st_point(2:3)))
 path <- tempfile(fileext = ".parquet")
 writeGeoParquet(pts_sf, path)
