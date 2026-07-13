@@ -1,6 +1,6 @@
 Package: DuckDBSpatial
-Version: 0.9.8
-Date: 2026-07-08
+Version: 0.9.9
+Date: 2026-07-13
 Title: DuckDB-Backed Spatial Data Structures
 Description:
     Provides DuckDB-backed implementations of spatial data structures for efficient
@@ -47,4 +47,5 @@ Collate:
     'DuckDBDataFrame-spatial.R'
     'geoparquet-io.R'
     'writeGeoParquet.R'
+    'zzz.R'
 Config/roxygen2/version: 8.0.0

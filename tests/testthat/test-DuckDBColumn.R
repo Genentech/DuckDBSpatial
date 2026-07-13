@@ -251,6 +251,17 @@ test_that("Spatial table joins work as expected for a DuckDBTable", {
     expect_true(nrow(joined) >= nrow(df))
 })
 
+test_that("st_join maps the sf predicate to its ST_* SQL function", {
+    resolve <- DuckDBSpatial:::.st_predicate_sql_name
+    expect_equal(resolve(sf::st_intersects), "ST_Intersects")
+    expect_equal(resolve(sf::st_within), "ST_Within")
+    expect_equal(resolve(sf::st_contains), "ST_Contains")
+    expect_equal(resolve(sf::st_covers), "ST_Covers")
+    expect_equal(resolve(sf::st_touches), "ST_Touches")
+    # An unrecognized predicate errors rather than silently using ST_Intersects.
+    expect_error(resolve(function(x, y) TRUE), "not recognized")
+})
+
 test_that("Spatial table filters work as expected for a DuckDBTable", {
     df <- DuckDBDataFrame(spatial_path)
     df <- df[which(!is.na(spatial_wkt)), ]

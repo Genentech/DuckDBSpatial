@@ -22,7 +22,7 @@
     }
 }
 
-#' @importFrom sf st_bbox st_geometry_type
+#' @importFrom sf st_bbox st_crs st_geometry_type
 .buildGeoParquetMetadata <- function(geom, sfc) {
     if (!requireNamespace("jsonlite", quietly = TRUE))
         stop("package 'jsonlite' is required for writeGeoParquet(); ",
@@ -30,13 +30,25 @@
 
     types <- as.character(st_geometry_type(sfc))
     geometry_types <- .geometryTypeToGeoParquet(types)
-    bbox <- as.numeric(st_bbox(sfc))
-    if (any(!is.finite(bbox))) {
-        bbox <- c(0, 0, 0, 0)
-    }
+
     col_spec <- list(encoding = "WKB",
-                     geometry_types = as.list(geometry_types),
-                     bbox = as.list(bbox))
+                     geometry_types = as.list(geometry_types))
+
+    # bbox is OPTIONAL in the GeoParquet spec and should be OMITTED when the
+    # extent is unknown (empty / non-finite).
+    bbox <- as.numeric(st_bbox(sfc))
+    if (all(is.finite(bbox))) {
+        col_spec[["bbox"]] <- as.list(bbox)
+    }
+
+    # Emit the CRS so a reader does not fall back to the spec default of
+    # OGC:CRS84 (WGS84 lon/lat). sf exposes WKT2; a genuinely unknown CRS is
+    # left out (the WGS84 default then applies, as intended for unknown data).
+    crs <- st_crs(sfc)
+    if (!is.na(crs) && !is.null(crs$wkt)) {
+        col_spec[["crs"]] <- crs$wkt
+    }
+
     meta <- list(version = "1.0.0",
                  primary_column = geom,
                  columns = structure(list(col_spec), names = geom))

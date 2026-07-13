@@ -1290,6 +1290,27 @@ st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
     }
 }
 
+# Map an sf spatial-predicate function to its DuckDB ST_* function name, so
+# st_join() honors the `join` argument instead of always using ST_Intersects.
+.st_predicate_sql_name <- function(join) {
+    preds <- c(
+        st_intersects = "ST_Intersects", st_within = "ST_Within",
+        st_contains = "ST_Contains", st_covers = "ST_Covers",
+        st_covered_by = "ST_CoveredBy", st_overlaps = "ST_Overlaps",
+        st_touches = "ST_Touches", st_equals = "ST_Equals",
+        st_crosses = "ST_Crosses", st_disjoint = "ST_Disjoint")
+    for (nm in names(preds)) {
+        fn <- tryCatch(getExportedValue("sf", nm), error = function(e) NULL)
+        if (!is.null(fn) && identical(join, fn)) {
+            return(preds[[nm]])
+        }
+    }
+    stop("st_join() on a DuckDBTable supports an sf spatial predicate ",
+         "(st_intersects, st_within, st_contains, st_covers, st_covered_by, ",
+         "st_overlaps, st_touches, st_equals, st_crosses, st_disjoint); ",
+         "the supplied 'join' was not recognized")
+}
+
 #' @rdname DuckDBTable-spatial
 #' @param x A \code{DuckDBTable} or \code{DuckDBDataFrame}.
 #' @param y A \code{DuckDBTable} or \code{DuckDBDataFrame} to join against.
@@ -1300,12 +1321,13 @@ st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
 #' @importFrom dbplyr sql_render
 #' @importFrom sf st_join st_intersects
 st_join.DuckDBTable <- function(x, y, join = st_intersects, ...) {
+    pred <- .st_predicate_sql_name(join)
     conn <- dbconn(x)
     x_q <- sql_render(tblconn(x, select = FALSE))
     y_q <- sql_render(tblconn(y, select = FALSE))
     sql_txt <- sprintf(
-        "SELECT x.*, y.* FROM (%s) x INNER JOIN (%s) y ON ST_Intersects(x.geometry, y.geometry)",
-        x_q, y_q)
+        "SELECT x.*, y.* FROM (%s) x INNER JOIN (%s) y ON %s(x.geometry, y.geometry)",
+        x_q, y_q, pred)
     .lazy_sql_ddf(conn, sql_txt)
 }
 

@@ -35,6 +35,36 @@ test_that("writeGeoParquet round-trip for POINT", {
     expect_equal(st_coordinates(sfc_out), st_coordinates(pts), check.attributes = FALSE)
 })
 
+test_that("writeGeoParquet records the CRS and omits an unknown bbox", {
+    skip_if_not_installed("nanoparquet")
+    library(sf)
+
+    # Projected CRS (UTM 33N): the geo metadata must carry a `crs` so a reader
+    # does not fall back to the WGS84 default and mislabel the coordinates.
+    pts <- st_sf(id = 1:2, geometry = st_sfc(
+        st_point(c(500000, 4649776)), st_point(c(500100, 4649876)), crs = 32633))
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path))
+    DuckDBSpatial::writeGeoParquet(pts, path)
+
+    kvm <- nanoparquet::read_parquet_metadata(path)$file_meta_data$key_value_metadata[[1]]
+    geo <- jsonlite::fromJSON(kvm$value[kvm$key == "geo"])
+    cs <- geo$columns$geometry
+    expect_false(is.null(cs$crs))
+    expect_true(grepl("UTM zone 33N", cs$crs))          # WKT2 of EPSG:32633
+    expect_equal(unlist(cs$bbox), c(500000, 4649776, 500100, 4649876))
+
+    # An empty geometry has a non-finite extent → bbox must be OMITTED (not
+    # [0,0,0,0], which would falsely claim a real extent at the origin).
+    emp <- st_sf(id = 1L, geometry = st_sfc(st_geometrycollection(), crs = 4326))
+    path2 <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path2), add = TRUE)
+    DuckDBSpatial::writeGeoParquet(emp, path2)
+    kvm2 <- nanoparquet::read_parquet_metadata(path2)$file_meta_data$key_value_metadata[[1]]
+    geo2 <- jsonlite::fromJSON(kvm2$value[kvm2$key == "geo"])
+    expect_null(geo2$columns$geometry$bbox)
+})
+
 test_that("writeGeoParquet round-trip for POLYGON", {
     skip_if_not_installed("nanoparquet")
     library(sf)
