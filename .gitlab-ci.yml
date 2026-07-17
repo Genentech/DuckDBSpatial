@@ -11,4 +11,7 @@ include:
     file: 'r-check.yml'
 
 check:
-  extends: .modl_r_check
+  extends: .modl_r_check_with_deps
+  variables:
+    MODL_R_INTERNAL_DEPS: >-
+      modl/BiocDuckDB/DuckDBDataFrame
