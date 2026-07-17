@@ -195,3 +195,44 @@ layerSubsetByGeometry <- function(x, y, coords = NULL, geom = "geometry") {
         which(.overlaps_inmemory(x, y, coords = coords, geom = geom))
     }
 }
+
+#' Subset a points layer to a bounding box with a prunable range predicate
+#'
+#' Returns the rows of point layer \code{x} inside \code{[xmin, xmax] x [ymin, ymax]}
+#' using a plain coordinate range predicate
+#' (\code{x_col >= xmin & x_col <= xmax & y_col >= ymin & y_col <= ymax}). Unlike
+#' \code{\link{layerSubsetByBbox}} (which builds a per-row \code{ST_Point} and tests
+#' \code{ST_Intersects} against an envelope, and returns row indices), the range
+#' predicate pushes into DuckDB's Parquet reader, so on a Morton-sorted (coord-indexed)
+#' points file (see \code{\link{writeSpatialPointsParquet}}) it prunes row groups
+#' outside the box. The result is a \strong{lazy} \code{DuckDBDataFrame} (nothing is
+#' materialized until collected), the R counterpart of scibis' \code{query_points}.
+#'
+#' @param x A \link[DuckDBDataFrame:DuckDBDataFrame-class]{DuckDBDataFrame} point layer.
+#' @param xmin,xmax,ymin,ymax Bounding-box limits (inclusive).
+#' @param x_col,y_col Coordinate column names (default \code{"x"}/\code{"y"}).
+#'
+#' @return A lazy \code{DuckDBDataFrame} filtered to the box.
+#'
+#' @examples
+#' p <- tempfile(fileext = ".parquet")
+#' writeSpatialPointsParquet(
+#'     data.frame(x = c(1, 5, 50), y = c(1, 5, 50), gene = c("A", "B", "C")), p)
+#' pts <- DuckDBDataFrame::DuckDBDataFrame(p)
+#' as.data.frame(layerBboxRange(pts, 0, 10, 0, 10))
+#' unlink(p)
+#'
+#' @export
+#' @importClassesFrom DuckDBDataFrame DuckDBDataFrame
+layerBboxRange <- function(x, xmin, xmax, ymin, ymax, x_col = "x", y_col = "y") {
+    if (!is(x, "DuckDBDataFrame")) {
+        stop("'x' must be a DuckDBDataFrame")
+    }
+    if (!all(c(x_col, y_col) %in% colnames(x))) {
+        stop("'x' lacks coordinate columns '", x_col, "'/'", y_col, "'")
+    }
+    xv <- x[[x_col]]
+    yv <- x[[y_col]]
+    keep <- xv >= xmin & xv <= xmax & yv >= ymin & yv <= ymax
+    x[keep, ]
+}

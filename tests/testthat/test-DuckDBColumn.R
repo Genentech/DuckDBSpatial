@@ -320,6 +320,15 @@ test_that("Layer spatial engines work as expected for a DuckDBDataFrame", {
     idx <- layerSubsetByBbox(pts, 0, 10, 0, 10, x_col = "x", y_col = "y")
     expect_equal(idx, which(as.logical(lengths(st_intersects(pts_sfc, env)) > 0L)))
 
+    # layerBboxRange: the prunable range-predicate sibling — a lazy DuckDBDataFrame
+    # with the same box membership as the ST_Intersects index path above.
+    rng <- layerBboxRange(pts, 0, 10, 0, 10, x_col = "x", y_col = "y")
+    expect_s4_class(rng, "DuckDBDataFrame")
+    rng_df <- as.data.frame(rng)
+    expect_equal(nrow(rng_df), length(idx))
+    expect_true(all(rng_df$x >= 0 & rng_df$x <= 10 & rng_df$y >= 0 & rng_df$y <= 10))
+    expect_error(layerBboxRange(pts, 0, 10, 0, 10, x_col = "nope"), "coordinate columns")
+
     poly_idx <- layerSubsetByGeometry(pts, poly, coords = c("x", "y"))
     expect_equal(poly_idx, which(as.logical(lengths(st_intersects(pts_sfc, poly)) > 0L)))
 

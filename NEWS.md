@@ -1,3 +1,27 @@
+# DuckDBSpatial 0.9.11
+
+## New features
+
+- Coord-indexed points layout for fast viewport queries (`points-coord-index.R`).
+  A viewport query is a bounding-box range predicate on `(x, y)`. Sorting points
+  along a space-filling curve before writing gives each Parquet row group a tight
+  `x`/`y` zonemap, so DuckDB prunes the groups outside the box and reads only the
+  points the query needs.
+  - `spatialSortPoints()` reorders a points table by the Morton (Z-order) code of
+    its `(x, y)`: a pure row permutation that clusters spatial neighbours and
+    round-trips identically.
+  - `writeSpatialPointsParquet()` sorts (by default) and writes a points Parquet
+    with a bounded `ROW_GROUP_SIZE`, so there are row groups to prune;
+    `spatial_sort = FALSE` writes the acquisition-order baseline.
+  - `layerBboxRange()` subsets a `DuckDBDataFrame` point layer to a bounding box
+    with a plain `x`/`y BETWEEN` predicate that pushes into the Parquet scan and
+    prunes, unlike `layerSubsetByBbox()`, which builds a per-row `ST_Point` and
+    tests `ST_Intersects`. Returns a lazy `DuckDBDataFrame`.
+
+  This is the 2-D spatial case of DuckDBDataFrame's general `cluster_by` directive:
+  `spatialSortPoints()` delegates to `DuckDBDataFrame::clusterSort()` with
+  `DuckDBDataFrame::zorder()`, so the stack keeps a single Morton generator.
+
 # DuckDBSpatial 0.9.9
 
 ## Bug fixes
