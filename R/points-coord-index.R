@@ -86,7 +86,6 @@ spatialSortPoints <- function(df, x_col = "x", y_col = "y", bits = 16L) {
 #' @export
 #' @importFrom DuckDBDataFrame acquireDuckDBConn buildParquetCopySQL
 #' @importFrom DBI dbWriteTable dbRemoveTable dbExecute dbQuoteIdentifier
-#' @importFrom stats runif
 writeSpatialPointsParquet <-
 function(df, path, x_col = "x", y_col = "y", spatial_sort = TRUE,
          row_group_size = 131072L, bits = 16L)
@@ -99,8 +98,7 @@ function(df, path, x_col = "x", y_col = "y", spatial_sort = TRUE,
         df <- spatialSortPoints(df, x_col = x_col, y_col = y_col, bits = bits)
     }
     conn <- acquireDuckDBConn()
-    view <- sprintf("spatial_points_%d",
-                    as.integer(runif(1L, 1L, .Machine$integer.max)))
+    view <- basename(tempfile("spatial_points_"))
     dbWriteTable(conn, view, df, temporary = TRUE, overwrite = TRUE)
     on.exit(try(dbRemoveTable(conn, view), silent = TRUE), add = TRUE)
     sql <- buildParquetCopySQL(
