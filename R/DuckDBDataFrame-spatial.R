@@ -236,3 +236,63 @@ layerBboxRange <- function(x, xmin, xmax, ymin, ymax, x_col = "x", y_col = "y") 
     keep <- xv >= xmin & xv <= xmax & yv >= ymin & yv <= ymax
     x[keep, ]
 }
+
+#' Apply a coordinate transform to a spatial layer
+#'
+#' Transforms a spatial layer by a 2-D affine coordinate transform, in place and
+#' lazily (nothing is materialized until collected). \code{transform} is a
+#' \code{\link{coordinate-transforms}} object (\code{ctScale},
+#' \code{ctTranslation}, \code{ctRotation}, \code{ctAffine}, \code{ctSequence},
+#' …) or an affine matrix, lowered to a 2-D affine (\eqn{x' = a x + b y + xoff},
+#' \eqn{y' = d x + e y + yoff}). A point layer (columns \code{x_col}/
+#' \code{y_col}) is transformed by arithmetic on those columns; a geometry layer
+#' (column \code{geom}) by \code{\link{st_affine}} (DuckDB \code{ST_Affine}). To
+#' move a layer between named coordinate systems, resolve the transform with
+#' \code{\link{ctPath}} first and pass it here.
+#'
+#' @param x A \link[DuckDBDataFrame:DuckDBDataFrame-class]{DuckDBDataFrame}
+#'   layer.
+#' @param transform A \code{CoordinateTransform} or affine matrix (must be
+#'   2-D-expressible; a dimensionality change errors).
+#' @param x_col,y_col Coordinate column names for point layers (default
+#'   \code{"x"}/\code{"y"}); set \code{x_col = NULL} to force the geometry path.
+#' @param geom Geometry column name for geometry layers (default
+#'   \code{"geometry"}).
+#'
+#' @return A lazy \code{DuckDBDataFrame} with transformed coordinates.
+#'
+#' @seealso \code{\link{coordinate-transforms}}, \code{\link{ctGraph}},
+#'   \code{\link{st_affine}}
+#'
+#' @examples
+#' p <- tempfile(fileext = ".parquet")
+#' writeSpatialPointsParquet(data.frame(x = c(1, 2, 3), y = c(0, 0, 0)), p)
+#' pts <- DuckDBDataFrame::DuckDBDataFrame(p)
+#' # rotate 90 degrees about the origin: (x, y) -> (-y, x)
+#' as.data.frame(transformLayer(pts, ctRotation(rbind(c(0, -1), c(1, 0)))))
+#' unlink(p)
+#'
+#' @export
+#' @importClassesFrom DuckDBDataFrame DuckDBDataFrame
+transformLayer <- function(x, transform, x_col = "x", y_col = "y",
+                           geom = "geometry") {
+    if (!is(x, "DuckDBDataFrame")) {
+        stop("'x' must be a DuckDBDataFrame")
+    }
+    co <- .ctTo2DAffine(transform)
+    cols <- colnames(x)
+    if (!is.null(x_col) && !is.null(y_col) &&
+        x_col %in% cols && y_col %in% cols) {
+        xv <- x[[x_col]]
+        yv <- x[[y_col]]
+        x[[x_col]] <- co$a * xv + co$b * yv + co$xoff
+        x[[y_col]] <- co$d * xv + co$e * yv + co$yoff
+        x
+    } else if (!is.null(geom) && geom %in% cols) {
+        x[[geom]] <- st_affine(x[[geom]], transform)
+        x
+    } else {
+        stop("'x' has no coordinate columns ('", x_col, "'/'", y_col,
+             "') or geometry column ('", geom, "') to transform")
+    }
+}

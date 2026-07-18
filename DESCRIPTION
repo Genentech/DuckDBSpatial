@@ -45,6 +45,8 @@ Collate:
     'DuckDBTable-spatial.R'
     'DuckDBColumn-spatial.R'
     'DuckDBDataFrame-spatial.R'
+    'coordinate-transform-graph.R'
+    'coordinate-transforms.R'
     'geoparquet-io.R'
     'points-coord-index.R'
     'writeGeoParquet.R'

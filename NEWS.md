@@ -2,6 +2,26 @@
 
 ## New features
 
+- Coordinate-transform operators + a coordinate-transform graph, closing the
+  largest OME-NGFF / spatialdataR parity gap (previously only
+  `st_flip_coordinates` + CRS metadata).
+  - A transform algebra (`coordinate-transforms.R`): `ctIdentity()`, `ctScale()`,
+    `ctTranslation()`, `ctRotation()`, `ctAffine()`, `ctSequence()`, `ctMapAxis()`,
+    `ctByDimension()`, `ctBijection()` build the OME-NGFF RFC-5 affine family;
+    `ctAffineMatrix()` lowers any transform to a homogeneous affine matrix,
+    `ctApply()` applies it to a matrix of points, and `ctInvert()` inverts it. The
+    full matrix-expressible RFC-5 conformance suite (incl. 3-D, dimensionality
+    change, and multi-hop paths) is vendored as point-level vectors and passes.
+  - A coordinate-transform graph (`coordinate-transform-graph.R`):
+    `coordinateSystem()`, `ctGraph()` (auto-adds inverse edges for invertible
+    transforms), `ctPath()` (shortest-path resolution; errors on unknown systems,
+    no path, or an ambiguous tie), and `ctBetween()` (resolve + apply). Base R
+    only -- no graph/RBGL dependency.
+  - DuckDB data application: `st_affine()` transforms a `DuckDBTable` /
+    `DuckDBColumn` geometry column via `ST_Affine`, and `transformLayer()` applies
+    a (2-D) coordinate transform to a lazy spatial layer -- point `x`/`y` columns by
+    arithmetic, a geometry column by `ST_Affine`. Displacement / coordinate-field
+    ("by path") transforms are out of scope.
 - Coord-indexed points layout for fast viewport queries (`points-coord-index.R`).
   A viewport query is a bounding-box range predicate on `(x, y)`. Sorting points
   along a space-filling curve before writing gives each Parquet row group a tight

@@ -819,6 +819,40 @@ st_exterior_ring.DuckDBTable <- function(x, ...) {
     sql_call(x, "ST_ExteriorRing")
 }
 
+#' Apply a 2-D affine coordinate transform to geometries
+#'
+#' Applies a 2-D affine map to a geometry column via DuckDB \code{ST_Affine}:
+#' \eqn{x' = a x + b y + xoff}, \eqn{y' = d x + e y + yoff}. The affine may be a
+#' \code{\link{coordinate-transforms}} object (e.g. \code{ctScale},
+#' \code{ctRotation}, \code{ctSequence}), lowered to its 2-D coefficients, or a
+#' numeric matrix (\code{2x2} linear, \code{2x3} linear+offset, or \code{3x3}
+#' homogeneous). Errors if the transform is not 2-D-expressible (e.g. a
+#' dimensionality change). For point layers stored as \code{x}/\code{y} columns
+#' rather than a geometry column, use \code{\link{transformLayer}}.
+#'
+#' @param x A \code{DuckDBTable} / \code{DuckDBColumn} geometry, or an \code{sf}
+#'   object (default method).
+#' @param affine A \code{CoordinateTransform} or affine matrix.
+#' @param ... Ignored.
+#'
+#' @return An object of the same class as \code{x} with transformed geometries.
+#'
+#' @seealso \code{\link{coordinate-transforms}}, \code{\link{transformLayer}}
+#' @export
+st_affine <- function(x, affine, ...) UseMethod("st_affine")
+
+#' @export
+st_affine.default <- function(x, affine, ...) {
+    stop("st_affine is not implemented for this class")
+}
+
+#' @export
+#' @importFrom DuckDBDataFrame sql_call
+st_affine.DuckDBTable <- function(x, affine, ...) {
+    co <- .ctTo2DAffine(affine)
+    sql_call(x, "ST_Affine", co$a, co$b, co$d, co$e, co$xoff, co$yoff)
+}
+
 #' @export
 st_flip_coordinates <- function(x, ...) UseMethod("st_flip_coordinates")
 

@@ -1,0 +1,152 @@
+{
+  "_source": "OME-NGFF RFC-5 coordinate-transform conformance vectors, vendored (point-level known answers, not the OME-Zarr tooling) from github.com/clbarnes/ome_zarr_transformations_conformance (cases_config/*.toml). Each case: coordinate systems (name -> axis names), transform edges, and a source->target point mapping with tolerances.",
+  "cases": [
+    {
+      "name": "identity",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "identity"}}],
+      "source": {"name": "input", "coordinates": [[1, 2]]},
+      "target": {"name": "output", "coordinates": [[1, 2]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "scale",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "scale", "scale": [10, 20]}}],
+      "source": {"name": "input", "coordinates": [[1, 2]]},
+      "target": {"name": "output", "coordinates": [[10, 40]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "translation",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "translation", "translation": [10, 20]}}],
+      "source": {"name": "input", "coordinates": [[1, 2]]},
+      "target": {"name": "output", "coordinates": [[11, 22]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "affine",
+      "coordinate_systems": {"input": ["z", "y", "x"], "output": ["z", "y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "affine", "affine": [[2, 0, 0, 20], [0, 3, 0, 60], [0, 0, 4, 120]]}}],
+      "source": {"name": "input", "coordinates": [[-1, -1, -1], [0, 0, 0], [1, 1, 1], [2, 2, 2]]},
+      "target": {"name": "output", "coordinates": [[18, 57, 116], [20, 60, 120], [22, 63, 124], [24, 66, 128]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "affine_identity",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "affine", "affine": [[1, 0, 0], [0, 1, 0]]}}],
+      "source": {"name": "input", "coordinates": [[1, 2]]},
+      "target": {"name": "output", "coordinates": [[1, 2]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "affine_downProjection",
+      "coordinate_systems": {"input": ["z", "y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "affine", "affine": [[2, 2, 2, 0], [3, 3, 3, 0]]}}],
+      "source": {"name": "input", "coordinates": [[1, 2, 3]]},
+      "target": {"name": "output", "coordinates": [[12, 18]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "affine_upProjection",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["z", "y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "affine", "affine": [[2, 0, 0], [0, 3, 0], [1, 1, 0]]}}],
+      "source": {"name": "input", "coordinates": [[1, 2]]},
+      "target": {"name": "output", "coordinates": [[2, 6, 3]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "rotation",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "rotation", "rotation": [[0.70710678, -0.70710678], [0.70710678, 0.70710678]]}}],
+      "source": {"name": "input", "coordinates": [[-1, -1], [0, 0], [1, 1], [2, 2]]},
+      "target": {"name": "output", "coordinates": [[0.0, -1.41421356], [0.0, 0.0], [0.0, 1.41421356], [0.0, 2.82842712]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "rotation_identity",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "rotation", "rotation": [[1, 0], [0, 1]]}}],
+      "source": {"name": "input", "coordinates": [[1, 2]]},
+      "target": {"name": "output", "coordinates": [[1, 2]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "sequence",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "sequence", "transformations": [{"type": "scale", "scale": [10, 20]}, {"type": "scale", "scale": [0.1, 0.05]}]}}],
+      "source": {"name": "input", "coordinates": [[1, 2]]},
+      "target": {"name": "output", "coordinates": [[1, 2]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "mapAxis",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "mapAxis", "mapAxis": [1, 0]}}],
+      "source": {"name": "input", "coordinates": [[1, 2]]},
+      "target": {"name": "output", "coordinates": [[2, 1]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "byDimension",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "byDimension", "transformations": [{"transformation": {"type": "identity"}, "input_axes": [0], "output_axes": [0]}, {"transformation": {"type": "scale", "scale": [10]}, "input_axes": [1], "output_axes": [1]}]}}],
+      "source": {"name": "input", "coordinates": [[1, 2]]},
+      "target": {"name": "output", "coordinates": [[1, 20]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "byDimension_nonContiguous",
+      "coordinate_systems": {"input": ["z", "y", "x"], "output": ["z", "y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "byDimension", "transformations": [{"transformation": {"type": "affine", "affine": [[1, 2, 0], [3, 5, 0]]}, "input_axes": [0, 2], "output_axes": [0, 2]}, {"transformation": {"type": "scale", "scale": [10]}, "input_axes": [1], "output_axes": [1]}]}}],
+      "source": {"name": "input", "coordinates": [[1, 2, 3]]},
+      "target": {"name": "output", "coordinates": [[7, 20, 18]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "simple_path",
+      "coordinate_systems": {"input": ["y", "x"], "intermediate": ["y", "x"], "output": ["y", "x"]},
+      "edges": [
+        {"input": "input", "output": "intermediate", "transform": {"type": "identity"}},
+        {"input": "intermediate", "output": "output", "transform": {"type": "identity"}}
+      ],
+      "source": {"name": "input", "coordinates": [[1, 2]]},
+      "target": {"name": "output", "coordinates": [[1, 2]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "bijection_forward",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "bijection", "forward": {"type": "translation", "translation": [1, 1]}, "inverse": {"type": "translation", "translation": [10, 10]}}}],
+      "source": {"name": "input", "coordinates": [[1, 2]]},
+      "target": {"name": "output", "coordinates": [[2, 3]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "bijection_inverse",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "bijection", "forward": {"type": "translation", "translation": [1, 1]}, "inverse": {"type": "translation", "translation": [10, 10]}}}],
+      "source": {"name": "output", "coordinates": [[1, 2]]},
+      "target": {"name": "input", "coordinates": [[11, 12]]},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": false
+    },
+    {
+      "name": "unknown_source",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "identity"}}],
+      "source": {"name": "not_input", "coordinates": [[1, 2]]},
+      "target": {"name": "output"},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": true
+    },
+    {
+      "name": "unknown_target",
+      "coordinate_systems": {"input": ["y", "x"], "output": ["y", "x"]},
+      "edges": [{"input": "input", "output": "output", "transform": {"type": "identity"}}],
+      "source": {"name": "input", "coordinates": [[1, 2]]},
+      "target": {"name": "not_output"},
+      "atol": 1e-6, "rtol": 1e-3, "should_error": true
+    }
+  ]
+}

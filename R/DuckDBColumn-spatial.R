@@ -543,6 +543,11 @@ st_exterior_ring.DuckDBColumn <- function(x, ...) {
 }
 
 #' @export
+st_affine.DuckDBColumn <- function(x, affine, ...) {
+    replaceSlots(x, table = st_affine(x@table, affine), check = FALSE)
+}
+
+#' @export
 st_flip_coordinates.DuckDBColumn <- function(x, ...) {
     replaceSlots(x, table = st_flip_coordinates(x@table), check = FALSE)
 }
