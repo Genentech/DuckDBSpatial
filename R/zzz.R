@@ -10,7 +10,7 @@
 # with DuckDB's own "install the spatial extension" guidance only when actually
 # used. To pre-seed in a restricted environment, place a matching
 # `spatial.duckdb_extension` under `DUCKDB_EXTENSION_DIRECTORY`, or point
-# `MODL_DUCKDB_EXTENSION_REPOSITORY` at a reachable mirror.
+# `BIOCDUCKDB_EXTENSION_REPOSITORY` at a reachable mirror.
 
 #' @importFrom DuckDBDataFrame acquireDuckDBConn loadExtension
 .onLoad <- function(libname, pkgname) {

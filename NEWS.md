@@ -42,6 +42,12 @@
   `spatialSortPoints()` delegates to `DuckDBDataFrame::clusterSort()` with
   `DuckDBDataFrame::zorder()`, so the stack keeps a single Morton generator.
 
+# DuckDBSpatial 0.9.10
+
+## Changes
+
+- Relicensed under the MIT License.
+
 # DuckDBSpatial 0.9.9
 
 ## Bug fixes
@@ -58,7 +64,7 @@
   operations error only when actually used (with DuckDB's own guidance). To
   pre-seed in a restricted environment, place a version-matched
   `spatial.duckdb_extension` under `DUCKDB_EXTENSION_DIRECTORY`, or point
-  `MODL_DUCKDB_EXTENSION_REPOSITORY` at a reachable mirror.
+  `BIOCDUCKDB_EXTENSION_REPOSITORY` at a reachable mirror.
 - `st_join()` on a `DuckDBTable` now honors its `join` predicate argument instead
   of always using `ST_Intersects`. The predicate function is mapped to the
   matching DuckDB `ST_*` function (`st_within` -> `ST_Within`, `st_contains` ->
