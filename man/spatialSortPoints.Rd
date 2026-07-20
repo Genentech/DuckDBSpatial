@@ -4,13 +4,16 @@
 \alias{spatialSortPoints}
 \title{Reorder a points table by a Morton (Z-order) spatial key}
 \usage{
-spatialSortPoints(df, x_col = "x", y_col = "y", bits = 16L)
+spatialSortPoints(df, x_col = "x", y_col = "y", z_col = NULL, bits = 16L)
 }
 \arguments{
 \item{df}{A \code{data.frame} or \link[S4Vectors:DataFrame]{DataFrame} of
 points.}
 
 \item{x_col, y_col}{Coordinate column names (default \code{"x"}/\code{"y"}).}
+
+\item{z_col}{Optional third coordinate column for 3-D clustering; used only
+when non-\code{NULL} and present in \code{df} (default \code{NULL}, 2-D).}
 
 \item{bits}{Grid resolution per axis (default 16, a \eqn{2^{16}} grid).}
 }
@@ -19,19 +22,21 @@ points.}
 }
 \description{
 Returns \code{df} with its rows reordered by the Morton code of
-\code{(x_col, y_col)}, so that spatially neighboring points become
-contiguous. Writing the reordered table to Parquet gives each row group a
-tight \code{x}/\code{y} zonemap, which lets DuckDB prune groups outside a
-viewport query (see \code{\link{writeSpatialPointsParquet}} and
-\code{\link{layerBboxRange}}). A pure row permutation: no column is added,
-so it round-trips identically. A no-op (returns \code{df} unchanged) when
-\code{df} is empty or lacks either coordinate column.
+\code{(x_col, y_col)} (or \code{(x_col, y_col, z_col)} when \code{z_col} is
+given and present), so that spatially neighboring points become contiguous.
+Writing the reordered table to Parquet gives each row group a tight
+coordinate zonemap, which lets DuckDB prune groups outside a viewport query
+(see \code{\link{writeSpatialPointsParquet}} and
+\code{\link{layerBboxRange}}). A pure row permutation: no column is added, so
+it round-trips identically. A no-op (returns \code{df} unchanged) when
+\code{df} is empty or lacks a required coordinate column.
 }
 \details{
-This is the 2-D spatial convenience wrapper over
+This is the low-dimensional spatial convenience wrapper over
 \code{\link[DuckDBDataFrame]{clusterSort}}\code{(df, }\code{\link[DuckDBDataFrame]{zorder}}\code{(c(x_col, y_col)))};
-the Morton math lives in DuckDBDataFrame so the whole stack shares one
-implementation.
+the Morton math lives in DuckDBDataFrame and is already N-D, so
+\code{(x, y, z)} is a genuine 3-D Morton curve, not a 2-D curve with \code{z}
+appended.
 }
 \examples{
 df <- data.frame(x = c(9, 1, 5), y = c(9, 1, 5), gene = c("C", "A", "B"))

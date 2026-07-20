@@ -9,6 +9,7 @@ writeSpatialPointsParquet(
   path,
   x_col = "x",
   y_col = "y",
+  z_col = NULL,
   spatial_sort = TRUE,
   row_group_size = 131072L,
   bits = 16L
@@ -22,6 +23,11 @@ e.g. gene, are carried through).}
 \item{path}{Output Parquet file path.}
 
 \item{x_col, y_col}{Coordinate column names (default \code{"x"}/\code{"y"}).}
+
+\item{z_col}{Optional third coordinate column for 3-D Morton clustering.
+Default \code{NULL} auto-detects a \code{"z"} column (so 3-D points cluster
+in 3-D automatically, matching scibis); pass a name to override or
+\code{NA} to force 2-D.}
 
 \item{spatial_sort}{If \code{TRUE} (default), Morton-sort before writing
 (coord-indexed layout); if \code{FALSE}, write in input order (baseline).}

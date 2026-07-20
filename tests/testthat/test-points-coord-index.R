@@ -60,3 +60,50 @@ test_that("writeSpatialPointsParquet errors without coordinates", {
         "coordinate columns"
     )
 })
+
+# --- 3-D coord indexing (#95) ------------------------------------------------
+
+.make_points_3d <- function(n = 3000L, genes = 40L, seed = 2L) {
+    set.seed(seed)
+    data.frame(
+        x = runif(n, 0, 100),
+        y = runif(n, 0, 100),
+        z = runif(n, 0, 100),
+        gene = sample(paste0("G", seq_len(genes) - 1L), n, replace = TRUE),
+        stringsAsFactors = FALSE
+    )
+}
+
+test_that("spatialSortPoints clusters in 3-D when z_col is given", {
+    df <- .make_points_3d()
+    srt <- spatialSortPoints(df, z_col = "z")
+    expect_equal(nrow(srt), nrow(df))
+    expect_setequal(srt$z, df$z)
+    expect_identical(colnames(srt), colnames(df))  # pure permutation: no column added
+    expect_false(identical(srt$x, df$x))           # a true reordering
+
+    # a genuine 3-D curve: neighbours in (x, y, z) end up adjacent, the far one not
+    df3 <- data.frame(x = c(1, 1.1, 99), y = c(1, 1.1, 99), z = c(1, 1.1, 99))
+    s3 <- spatialSortPoints(df3, z_col = "z")
+    pos <- vapply(c(1, 1.1, 99), function(v) which(s3$x == v), integer(1L))
+    expect_lt(abs(pos[1] - pos[2]), abs(pos[1] - pos[3]))
+
+    # z_col that is absent falls back to 2-D (no error)
+    expect_equal(nrow(spatialSortPoints(.make_points(), z_col = "z")), 3000L)
+})
+
+test_that("writeSpatialPointsParquet auto-3-D-clusters on a z column", {
+    df <- .make_points_3d()
+    p <- tempfile(fileext = ".parquet")
+    on.exit(unlink(p), add = TRUE)
+    writeSpatialPointsParquet(df, p, row_group_size = 500L)  # auto-detects "z"
+    rt <- as.data.frame(DuckDBDataFrame(p))
+    expect_equal(nrow(rt), nrow(df))
+    expect_setequal(rt$z, df$z)
+
+    # z_col = NA forces the 2-D layout (still a correct round-trip)
+    p2 <- tempfile(fileext = ".parquet")
+    on.exit(unlink(p2), add = TRUE)
+    writeSpatialPointsParquet(df, p2, z_col = NA, row_group_size = 500L)
+    expect_setequal(as.data.frame(DuckDBDataFrame(p2))$z, df$z)
+})

@@ -4,7 +4,18 @@
 \alias{layerBboxRange}
 \title{Subset a points layer to a bounding box with a prunable range predicate}
 \usage{
-layerBboxRange(x, xmin, xmax, ymin, ymax, x_col = "x", y_col = "y")
+layerBboxRange(
+  x,
+  xmin,
+  xmax,
+  ymin,
+  ymax,
+  x_col = "x",
+  y_col = "y",
+  zmin = NULL,
+  zmax = NULL,
+  z_col = "z"
+)
 }
 \arguments{
 \item{x}{A \link[DuckDBDataFrame:DuckDBDataFrame-class]{DuckDBDataFrame} point layer.}
@@ -12,6 +23,13 @@ layerBboxRange(x, xmin, xmax, ymin, ymax, x_col = "x", y_col = "y")
 \item{xmin, xmax, ymin, ymax}{Bounding-box limits (inclusive).}
 
 \item{x_col, y_col}{Coordinate column names (default \code{"x"}/\code{"y"}).}
+
+\item{zmin, zmax}{Optional inclusive depth range for a 3-D viewport; when both
+are non-\code{NULL} a \code{z_col BETWEEN zmin AND zmax} term is ANDed on
+(and pushes into the scan too, so a 3-D layout prunes on \code{z} as well).}
+
+\item{z_col}{Depth column name (default \code{"z"}), used only with
+\code{zmin}/\code{zmax}.}
 }
 \value{
 A lazy \code{DuckDBDataFrame} filtered to the box.

@@ -211,6 +211,11 @@ layerSubsetByGeometry <- function(x, y, coords = NULL, geom = "geometry") {
 #' @param x A \link[DuckDBDataFrame:DuckDBDataFrame-class]{DuckDBDataFrame} point layer.
 #' @param xmin,xmax,ymin,ymax Bounding-box limits (inclusive).
 #' @param x_col,y_col Coordinate column names (default \code{"x"}/\code{"y"}).
+#' @param zmin,zmax Optional inclusive depth range for a 3-D viewport; when both
+#'   are non-\code{NULL} a \code{z_col BETWEEN zmin AND zmax} term is ANDed on
+#'   (and pushes into the scan too, so a 3-D layout prunes on \code{z} as well).
+#' @param z_col Depth column name (default \code{"z"}), used only with
+#'   \code{zmin}/\code{zmax}.
 #'
 #' @return A lazy \code{DuckDBDataFrame} filtered to the box.
 #'
@@ -224,16 +229,23 @@ layerSubsetByGeometry <- function(x, y, coords = NULL, geom = "geometry") {
 #'
 #' @export
 #' @importClassesFrom DuckDBDataFrame DuckDBDataFrame
-layerBboxRange <- function(x, xmin, xmax, ymin, ymax, x_col = "x", y_col = "y") {
+layerBboxRange <- function(x, xmin, xmax, ymin, ymax, x_col = "x", y_col = "y",
+                           zmin = NULL, zmax = NULL, z_col = "z") {
     if (!is(x, "DuckDBDataFrame")) {
         stop("'x' must be a DuckDBDataFrame")
     }
-    if (!all(c(x_col, y_col) %in% colnames(x))) {
-        stop("'x' lacks coordinate columns '", x_col, "'/'", y_col, "'")
+    use_z <- !is.null(zmin) && !is.null(zmax)
+    need <- if (use_z) c(x_col, y_col, z_col) else c(x_col, y_col)
+    if (!all(need %in% colnames(x))) {
+        stop("'x' lacks coordinate columns '", paste(need, collapse = "'/'"), "'")
     }
     xv <- x[[x_col]]
     yv <- x[[y_col]]
     keep <- xv >= xmin & xv <= xmax & yv >= ymin & yv <= ymax
+    if (use_z) {
+        zv <- x[[z_col]]
+        keep <- keep & zv >= zmin & zv <= zmax
+    }
     x[keep, ]
 }
 

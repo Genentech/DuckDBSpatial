@@ -1,3 +1,18 @@
+# DuckDBSpatial 0.9.12
+
+## New features
+
+- 3-D coord-indexed points. `spatialSortPoints()` and `writeSpatialPointsParquet()`
+  gain a `z_col` argument and cluster on a genuine 3-D Morton curve
+  `zorder(c(x, y, z))` (the shared generator is already N-D — not a 2-D curve with
+  `z` appended). The writer **auto-detects a `"z"` column** by default (so 3-D
+  points cluster in 3-D automatically, matching scibis's writer and keeping the
+  points Parquet byte-identical across the two stacks); `z_col = NA` forces 2-D, a
+  name overrides. `layerBboxRange()` gains `zmin`/`zmax` (and `z_col`): when both
+  are supplied it ANDs a `z BETWEEN` term that pushes into the Parquet scan too, so
+  a 3-D layout prunes row groups on all three axes. Still a pure row permutation +
+  plain range predicate — no column added, no secondary index.
+
 # DuckDBSpatial 0.9.11
 
 ## New features

@@ -21,22 +21,26 @@
 #' Reorder a points table by a Morton (Z-order) spatial key
 #'
 #' Returns \code{df} with its rows reordered by the Morton code of
-#' \code{(x_col, y_col)}, so that spatially neighboring points become
-#' contiguous. Writing the reordered table to Parquet gives each row group a
-#' tight \code{x}/\code{y} zonemap, which lets DuckDB prune groups outside a
-#' viewport query (see \code{\link{writeSpatialPointsParquet}} and
-#' \code{\link{layerBboxRange}}). A pure row permutation: no column is added,
-#' so it round-trips identically. A no-op (returns \code{df} unchanged) when
-#' \code{df} is empty or lacks either coordinate column.
+#' \code{(x_col, y_col)} (or \code{(x_col, y_col, z_col)} when \code{z_col} is
+#' given and present), so that spatially neighboring points become contiguous.
+#' Writing the reordered table to Parquet gives each row group a tight
+#' coordinate zonemap, which lets DuckDB prune groups outside a viewport query
+#' (see \code{\link{writeSpatialPointsParquet}} and
+#' \code{\link{layerBboxRange}}). A pure row permutation: no column is added, so
+#' it round-trips identically. A no-op (returns \code{df} unchanged) when
+#' \code{df} is empty or lacks a required coordinate column.
 #'
-#' This is the 2-D spatial convenience wrapper over
+#' This is the low-dimensional spatial convenience wrapper over
 #' \code{\link[DuckDBDataFrame]{clusterSort}}\code{(df, }\code{\link[DuckDBDataFrame]{zorder}}\code{(c(x_col, y_col)))};
-#' the Morton math lives in DuckDBDataFrame so the whole stack shares one
-#' implementation.
+#' the Morton math lives in DuckDBDataFrame and is already N-D, so
+#' \code{(x, y, z)} is a genuine 3-D Morton curve, not a 2-D curve with \code{z}
+#' appended.
 #'
 #' @param df A \code{data.frame} or \link[S4Vectors:DataFrame]{DataFrame} of
 #'   points.
 #' @param x_col,y_col Coordinate column names (default \code{"x"}/\code{"y"}).
+#' @param z_col Optional third coordinate column for 3-D clustering; used only
+#'   when non-\code{NULL} and present in \code{df} (default \code{NULL}, 2-D).
 #' @param bits Grid resolution per axis (default 16, a \eqn{2^{16}} grid).
 #'
 #' @return \code{df} reordered by Morton code (same class, same columns).
@@ -47,11 +51,16 @@
 #'
 #' @export
 #' @importFrom DuckDBDataFrame clusterSort zorder
-spatialSortPoints <- function(df, x_col = "x", y_col = "y", bits = 16L) {
+spatialSortPoints <- function(df, x_col = "x", y_col = "y", z_col = NULL,
+                              bits = 16L) {
     if (!nrow(df) || !all(c(x_col, y_col) %in% colnames(df))) {
         return(df)
     }
-    clusterSort(df, zorder(c(x_col, y_col), bits = bits))
+    cols <- c(x_col, y_col)
+    if (!is.null(z_col) && z_col %in% colnames(df)) {
+        cols <- c(cols, z_col)
+    }
+    clusterSort(df, zorder(cols, bits = bits))
 }
 
 #' Write a coord-indexed (Morton-sorted) points Parquet
@@ -69,6 +78,10 @@ spatialSortPoints <- function(df, x_col = "x", y_col = "y", bits = 16L) {
 #'   e.g. gene, are carried through).
 #' @param path Output Parquet file path.
 #' @param x_col,y_col Coordinate column names (default \code{"x"}/\code{"y"}).
+#' @param z_col Optional third coordinate column for 3-D Morton clustering.
+#'   Default \code{NULL} auto-detects a \code{"z"} column (so 3-D points cluster
+#'   in 3-D automatically, matching scibis); pass a name to override or
+#'   \code{NA} to force 2-D.
 #' @param spatial_sort If \code{TRUE} (default), Morton-sort before writing
 #'   (coord-indexed layout); if \code{FALSE}, write in input order (baseline).
 #' @param row_group_size Parquet \code{ROW_GROUP_SIZE} (default 131072); smaller
@@ -87,7 +100,7 @@ spatialSortPoints <- function(df, x_col = "x", y_col = "y", bits = 16L) {
 #' @importFrom DuckDBDataFrame acquireDuckDBConn buildParquetCopySQL
 #' @importFrom DBI dbWriteTable dbRemoveTable dbExecute dbQuoteIdentifier
 writeSpatialPointsParquet <-
-function(df, path, x_col = "x", y_col = "y", spatial_sort = TRUE,
+function(df, path, x_col = "x", y_col = "y", z_col = NULL, spatial_sort = TRUE,
          row_group_size = 131072L, bits = 16L)
 {
     df <- as.data.frame(df)
@@ -95,7 +108,16 @@ function(df, path, x_col = "x", y_col = "y", spatial_sort = TRUE,
         stop("'df' lacks coordinate columns '", x_col, "'/'", y_col, "'")
     }
     if (spatial_sort) {
-        df <- spatialSortPoints(df, x_col = x_col, y_col = y_col, bits = bits)
+        # Auto-detect a "z" column for 3-D clustering (matches scibis's writer,
+        # preserving byte-parity); z_col = NA forces 2-D, a name overrides.
+        zc <- z_col
+        if (is.null(zc) && "z" %in% colnames(df)) {
+            zc <- "z"
+        } else if (length(zc) == 1L && is.na(zc)) {
+            zc <- NULL
+        }
+        df <- spatialSortPoints(df, x_col = x_col, y_col = y_col,
+                                z_col = zc, bits = bits)
     }
     conn <- acquireDuckDBConn()
     view <- basename(tempfile("spatial_points_"))

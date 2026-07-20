@@ -329,6 +329,28 @@ test_that("Layer spatial engines work as expected for a DuckDBDataFrame", {
     expect_true(all(rng_df$x >= 0 & rng_df$x <= 10 & rng_df$y >= 0 & rng_df$y <= 10))
     expect_error(layerBboxRange(pts, 0, 10, 0, 10, x_col = "nope"), "coordinate columns")
 
+    # 3-D viewport (#95): zmin/zmax AND a `z BETWEEN` term onto the box.
+    set.seed(3L)
+    df3 <- data.frame(x = runif(500, 0, 100), y = runif(500, 0, 100),
+                      z = runif(500, 0, 100))
+    path3 <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path3), add = TRUE)
+    arrow::write_parquet(df3, path3)
+    pts3 <- DuckDBDataFrame(path3, datacols = c("x", "y", "z"))
+    got3 <- as.data.frame(
+        layerBboxRange(pts3, 0, 50, 0, 50, zmin = 20, zmax = 70, z_col = "z"))
+    exp3 <- with(df3, x >= 0 & x <= 50 & y >= 0 & y <= 50 & z >= 20 & z <= 70)
+    expect_equal(nrow(got3), sum(exp3))
+    expect_true(all(got3$z >= 20 & got3$z <= 70))
+    # only one z bound -> stays 2-D (z ignored, no error even though z exists)
+    exp2 <- with(df3, x >= 0 & x <= 50 & y >= 0 & y <= 50)
+    expect_equal(nrow(as.data.frame(layerBboxRange(pts3, 0, 50, 0, 50, zmin = 20))),
+                 sum(exp2))
+    # a z range without a z column errors
+    pts_xy <- DuckDBDataFrame(path3, datacols = c("x", "y"))
+    expect_error(layerBboxRange(pts_xy, 0, 50, 0, 50, zmin = 20, zmax = 70),
+                 "coordinate columns")
+
     poly_idx <- layerSubsetByGeometry(pts, poly, coords = c("x", "y"))
     expect_equal(poly_idx, which(as.logical(lengths(st_intersects(pts_sfc, poly)) > 0L)))
 
