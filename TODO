@@ -1,8 +1,0 @@
-o Warn on all-null coordinate / centroid columns in the spatial write path.
-  Benchmarking surfaced a release whose x_centroid / y_centroid columns were
-  100% null while the real per-cell coordinates lived in separate columns, which
-  forced a downstream fallback. A coordinate or centroid column that is entirely
-  null in a spatial resource is almost certainly an upstream mapping error, so
-  the writer should emit a warning rather than silently persist it. The actual
-  fix belongs in whatever assembles the object; this is the guard that would
-  catch it at write time.
