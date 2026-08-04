@@ -1,6 +1,6 @@
 Package: DuckDBSpatial
-Version: 0.99.1
-Date: 2026-07-31
+Version: 0.99.2
+Date: 2026-08-04
 Title: DuckDB-Backed Spatial Data Structures
 Description:
     Provides DuckDB-backed implementations of spatial data structures for efficient
@@ -15,6 +15,8 @@ Authors@R:
         person("Genentech, Inc.", role="cph")
     )
 License: MIT + file LICENSE
+URL: https://github.com/Genentech/DuckDBSpatial
+BugReports: https://github.com/Genentech/DuckDBSpatial/issues
 Depends:
     R (>= 4.6.0),
     methods,
@@ -45,6 +47,7 @@ Collate:
     'DuckDBTable-spatial.R'
     'DuckDBColumn-spatial.R'
     'DuckDBDataFrame-spatial.R'
+    'DuckDBSpatial-package.R'
     'coordinate-transform-graph.R'
     'coordinate-transforms.R'
     'geoparquet-io.R'
