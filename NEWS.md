@@ -1,3 +1,9 @@
+# DuckDBSpatial 0.99.4
+
+## Documentation
+
+- Replaced em dashes with commas or colons in the vignettes.
+
 # DuckDBSpatial 0.99.3
 
 ## Documentation

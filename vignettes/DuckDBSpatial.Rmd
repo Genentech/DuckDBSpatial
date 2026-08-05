@@ -47,14 +47,14 @@ Spatial datasets are increasingly large: a spatial-transcriptomics experiment ca
 carry millions of transcript centroids and cell-boundary polygons, and imaging or
 geographic layers run to hundreds of millions of features. The
 [sf](https://r-spatial.github.io/sf/) package is the standard R interface for such
-data --- `st_area()`, `st_intersects()`, `st_centroid()` --- but an ordinary `sf`
+data, `st_area()`, `st_intersects()`, `st_centroid()`, but an ordinary `sf`
 object holds every geometry in memory.
 
 `r Biocpkg("DuckDBSpatial")` extends `r Biocpkg("DuckDBDataFrame")` with
 `r CRANpkg("sf")`-compatible spatial methods that run on **DuckDB-backed columns
 and tables**, powered by DuckDB's native spatial extension. The geometries stay
 **on disk** in columnar Parquet, and spatial operations are recorded as lazy SQL
-that DuckDB pushes down --- so you can measure, filter, and transform geometries
+that DuckDB pushes down, so you can measure, filter, and transform geometries
 **without loading the layer into memory**. It reads and writes **GeoParquet 1.0**,
 so the same files interoperate with GeoPandas, GDAL, QGIS, and DuckDB itself.
 
@@ -100,7 +100,7 @@ head(st_area(geom))
 
 Measurements (`st_area()`, `st_length()`, `st_perimeter()`) and geometry
 transforms (`st_centroid()`, `st_buffer()`, `st_convex_hull()`) all return **lazy
-`DuckDBColumn`s** --- nothing is computed until the values are pulled:
+`DuckDBColumn`s**, nothing is computed until the values are pulled:
 
 ```{r transforms, eval=.spatial_ok}
 centroids <- st_centroid(geom)
@@ -110,8 +110,8 @@ head(st_as_text(centroids))
 
 # Spatial predicates and filtering
 
-Spatial predicates --- true/false tests of how two geometries relate, such as
-`st_intersects()`, `st_within()`, and `st_contains()` --- build SQL against a query
+Spatial predicates, true/false tests of how two geometries relate, such as
+`st_intersects()`, `st_within()`, and `st_contains()`, build SQL against a query
 geometry and stay lazy:
 
 ```{r predicates, eval=.spatial_ok}
@@ -121,7 +121,7 @@ head(as.vector(hits))
 ```
 
 The table-level `st_filter()` is the convenient way to keep only the rows whose
-geometry satisfies a predicate against a query --- evaluated in DuckDB:
+geometry satisfies a predicate against a query, evaluated in DuckDB:
 
 ```{r filter, eval=.spatial_ok}
 filtered <- st_filter(df, query_pt)

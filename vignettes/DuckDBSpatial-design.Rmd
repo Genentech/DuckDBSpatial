@@ -65,7 +65,7 @@ The methods are registered as S3 methods on the `r CRANpkg("sf")` generics
 (`st_area.DuckDBColumn`, `st_intersects.DuckDBTable`, ...), so existing `sf`-based
 code dispatches to them automatically. None of them materialize geometries: each
 records a SQL expression on the underlying `DuckDBDataFrame`, evaluated only when
-values are pulled. The DuckDB spatial extension is obtained on demand --- DuckDB
+values are pulled. The DuckDB spatial extension is obtained on demand, DuckDB
 autoloads it on first use of an `ST_*` function (fetching from the configured
 extension repository, or loading a pre-provisioned copy from the extension
 directory), so callers never manage it explicitly.
@@ -89,7 +89,7 @@ SELECT ST_Intersects(geometry, ST_GeomFromText('<q as WKT>')) FROM layer
 ```
 
 Because these are ordinary columns in the query, DuckDB applies its usual
-optimizations --- column pruning (only the geometry column is read) and predicate
+optimizations, column pruning (only the geometry column is read) and predicate
 pushdown (a spatial filter is evaluated during the Parquet scan). The result of a
 column method is a lazy `DuckDBColumn`; the result of `st_filter()` is a lazy
 `DuckDBDataFrame`.
@@ -109,11 +109,11 @@ head(as.vector(area))               # pulled from DuckDB on demand
 There are two ways to run a spatial query, depending on how coordinates are
 stored:
 
-- **Geometry-column methods** --- the `r CRANpkg("sf")` generics above, for tables
+- **Geometry-column methods**, the `r CRANpkg("sf")` generics above, for tables
   that carry a `GEOMETRY` column (native DuckDB geometry, or WKB read from
   GeoParquet).
 - **Layer-level engines** (`layerSpatialOverlaps()`, `layerSubsetByGeometry()`,
-  `layerSubsetByBbox()`, `layerSpatialMatch()`) --- for tables that store plain
+  `layerSubsetByBbox()`, `layerSpatialMatch()`), for tables that store plain
   coordinate columns (`x`, `y`) with no geometry column. These construct points
   from the coordinates inside the query (`ST_Point(x, y)`) and apply the predicate
   against a supplied geometry, which is the common shape for
@@ -150,13 +150,13 @@ if they are absent.
 
 Adding a spatial method means registering an S3 method on the `r CRANpkg("sf")`
 generic for `DuckDBColumn` (and/or `DuckDBTable`) that emits the appropriate
-`ST_*` expression --- everything else (laziness, connection, materialization)
+`ST_*` expression, everything else (laziness, connection, materialization)
 comes from `r Biocpkg("DuckDBDataFrame")`.
 
 The main consumer is `r Biocpkg("BiocDuckDB")`: a `MultiAssaySpatialExperiment`
 writes its spatial layers (cell boundaries, landmarks) as GeoParquet via
 `writeGeoParquet()`, and reads them back as lazy `DuckDBDataFrame`s with
-`GEOMETRY` columns --- so a spatial experiment keeps its geometry on disk and
+`GEOMETRY` columns, so a spatial experiment keeps its geometry on disk and
 queries it through the same `r CRANpkg("sf")` API used here.
 
 # Session information
