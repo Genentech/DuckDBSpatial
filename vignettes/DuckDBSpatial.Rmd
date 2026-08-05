@@ -110,8 +110,9 @@ head(st_as_text(centroids))
 
 # Spatial predicates and filtering
 
-Spatial predicates (`st_intersects()`, `st_within()`, `st_contains()`, ...) build
-SQL against a query geometry and stay lazy:
+Spatial predicates --- true/false tests of how two geometries relate, such as
+`st_intersects()`, `st_within()`, and `st_contains()` --- build SQL against a query
+geometry and stay lazy:
 
 ```{r predicates, eval=.spatial_ok}
 query_pt <- st_sfc(st_point(c(30, 10)))

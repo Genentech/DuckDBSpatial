@@ -81,7 +81,8 @@ SELECT ST_Area(geometry) FROM layer
 ```
 
 a transform such as `st_centroid()` becomes `ST_Centroid(geometry)`, and a
-predicate against a query geometry `q` becomes a boolean column:
+predicate (a true/false spatial test) against a query geometry `q` becomes a
+boolean column:
 
 ```sql
 SELECT ST_Intersects(geometry, ST_GeomFromText('<q as WKT>')) FROM layer

@@ -1,3 +1,11 @@
+# DuckDBSpatial 0.99.3
+
+## Documentation
+
+- Briefly define "predicate" at its first use in the user and design vignettes
+  (a true/false test of how two geometries relate), addressing the reviewer's
+  note that the term may be unfamiliar to some readers.
+
 # DuckDBSpatial 0.99.2
 
 ## Documentation
