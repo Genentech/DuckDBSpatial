@@ -23,6 +23,7 @@
 }
 
 #' @importFrom sf st_bbox st_crs st_geometry_type
+#' @importFrom wk wk_crs_projjson
 .buildGeoParquetMetadata <- function(geom, sfc) {
     if (!requireNamespace("jsonlite", quietly = TRUE))
         stop("package 'jsonlite' is required for writeGeoParquet(); ",
@@ -42,11 +43,17 @@
     }
 
     # Emit the CRS so a reader does not fall back to the spec default of
-    # OGC:CRS84 (WGS84 lon/lat). sf exposes WKT2; a genuinely unknown CRS is
-    # left out (the WGS84 default then applies, as intended for unknown data).
+    # OGC:CRS84 (WGS84 lon/lat). The GeoParquet 1.0.0 spec requires "crs" to
+    # be a PROJJSON object, not a WKT string, so it's parsed back into a list
+    # here for jsonlite::toJSON() to re-embed as a nested JSON object rather
+    # than a JSON-encoded string. A genuinely unknown CRS, or one PROJJSON
+    # can't represent, is left out (the WGS84 default then applies).
     crs <- st_crs(sfc)
-    if (!is.na(crs) && !is.null(crs$wkt)) {
-        col_spec[["crs"]] <- crs$wkt
+    if (!is.na(crs)) {
+        projjson <- tryCatch(wk_crs_projjson(crs), error = function(e) NULL)
+        if (!is.null(projjson)) {
+            col_spec[["crs"]] <- jsonlite::fromJSON(projjson, simplifyVector = FALSE)
+        }
     }
 
     meta <- list(version = "1.0.0",
@@ -104,23 +111,28 @@
 #' }
 #'
 #' @examples
-#' \dontrun{
 #' library(sf)
+#' nc <- st_read(system.file("shape/nc.shp", package = "sf"), quiet = TRUE)
 #'
-#' # Write a simple features object
-#' nc <- st_read(system.file("shape/nc.shp", package="sf"))
-#' writeGeoParquet(nc, "nc.parquet")
+#' \donttest{
+#' if (requireNamespace("nanoparquet", quietly = TRUE)) {
+#'     # Write a simple features object
+#'     nc_path <- tempfile(fileext = ".parquet")
+#'     writeGeoParquet(nc, nc_path)
 #'
-#' # Write with custom geometry column name
-#' pts <- st_sf(id = 1:3, geom = st_sfc(st_point(c(0,0)),
-#'                                        st_point(c(1,1)),
-#'                                        st_point(c(2,2))))
-#' writeGeoParquet(pts, "points.parquet", geom = "geom")
+#'     # Write with a custom geometry column name
+#'     pts <- st_sf(id = 1:3, geom = st_sfc(st_point(c(0, 0)),
+#'                                          st_point(c(1, 1)),
+#'                                          st_point(c(2, 2))))
+#'     pts_path <- tempfile(fileext = ".parquet")
+#'     writeGeoParquet(pts, pts_path, geom = "geom")
 #'
-#' # Read back in DuckDB
-#' library(DuckDBDataFrame)
-#' ddb <- DuckDBDataFrame("nc.parquet")
-#' ddb$geometry  # Native GEOMETRY column
+#'     # Read back in DuckDB
+#'     ddb <- DuckDBDataFrame::DuckDBDataFrame(nc_path)
+#'     ddb$geometry  # Native GEOMETRY column
+#'
+#'     unlink(c(nc_path, pts_path))
+#' }
 #' }
 #'
 #' @seealso

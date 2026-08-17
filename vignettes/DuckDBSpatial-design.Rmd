@@ -99,6 +99,9 @@ spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
 df <- DuckDBDataFrame(spatial_path)
 df <- df[which(!is.na(df$type)), ]
 
+# df[["geometry"]] is an sf-style geometry column (a list, one WKB-encoded
+# shape per row); see the "Lazy spatial columns" section of the introduction
+# vignette for what that means if `sf` is new to you.
 area <- st_area(df[["geometry"]])   # records ST_Area(geometry); nothing computed yet
 class(area)
 head(as.vector(area))               # pulled from DuckDB on demand
@@ -133,6 +136,10 @@ lazy `DuckDBDataFrame`. `writeGeoParquet()` writes an `r CRANpkg("sf")` object a
 - a `geo` file-metadata key records the version, the primary geometry column, and
   per-column encoding, geometry types, and bounding box;
 - the result is readable by GeoPandas, GDAL, QGIS, DuckDB, and `r CRANpkg("sf")`.
+
+`st_sf()` pairs a data frame of attributes with an `st_sfc()` geometry list
+column into a full `sf` object (see the introduction vignette's "GeoParquet
+I/O" section for a walkthrough of this same construction):
 
 ```{r geoparquet, eval=.spatial_ok && requireNamespace("nanoparquet", quietly=TRUE)}
 pts_sf <- st_sf(id = 1:2, geometry = st_sfc(st_point(0:1), st_point(2:3)))

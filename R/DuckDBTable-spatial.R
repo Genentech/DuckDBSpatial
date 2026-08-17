@@ -488,10 +488,6 @@ st_make_envelope_sql <- function(xmin, ymin, xmax, ymax) {
     .st_make_envelope_sql(xmin, ymin, xmax, ymax)
 }
 
-.st_point_sql <- function(x_expr, y_expr) {
-    call("ST_Point", x_expr, y_expr)
-}
-
 #' @importFrom dplyr sql
 .st_make_envelope_sql <- function(xmin, ymin, xmax, ymax) {
     sql(sprintf("ST_MakeEnvelope(%s, %s, %s, %s)",
@@ -836,6 +832,17 @@ st_exterior_ring.DuckDBTable <- function(x, ...) {
 #' @param ... Ignored.
 #'
 #' @return An object of the same class as \code{x} with transformed geometries.
+#'
+#' @examples
+#' spatial_path <- system.file("extdata", "spatial", "type=polygon",
+#'                             package = "DuckDBSpatial")
+#' df <- DuckDBDataFrame::DuckDBDataFrame(spatial_path)
+#' geom <- df[["geometry"]]
+#'
+#' # doubling both x and y scale quadruples the area
+#' sf::st_area(geom)
+#' scaled <- st_affine(geom, ctScale(c(2, 2)))
+#' sf::st_area(scaled)
 #'
 #' @seealso \code{\link{coordinate-transforms}}, \code{\link{transformLayer}}
 #' @export

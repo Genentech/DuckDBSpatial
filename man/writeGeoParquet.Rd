@@ -67,23 +67,28 @@ The resulting files can be read by:
 }
 }
 \examples{
-\dontrun{
 library(sf)
+nc <- st_read(system.file("shape/nc.shp", package = "sf"), quiet = TRUE)
 
-# Write a simple features object
-nc <- st_read(system.file("shape/nc.shp", package="sf"))
-writeGeoParquet(nc, "nc.parquet")
+\donttest{
+if (requireNamespace("nanoparquet", quietly = TRUE)) {
+    # Write a simple features object
+    nc_path <- tempfile(fileext = ".parquet")
+    writeGeoParquet(nc, nc_path)
 
-# Write with custom geometry column name
-pts <- st_sf(id = 1:3, geom = st_sfc(st_point(c(0,0)),
-                                       st_point(c(1,1)),
-                                       st_point(c(2,2))))
-writeGeoParquet(pts, "points.parquet", geom = "geom")
+    # Write with a custom geometry column name
+    pts <- st_sf(id = 1:3, geom = st_sfc(st_point(c(0, 0)),
+                                         st_point(c(1, 1)),
+                                         st_point(c(2, 2))))
+    pts_path <- tempfile(fileext = ".parquet")
+    writeGeoParquet(pts, pts_path, geom = "geom")
 
-# Read back in DuckDB
-library(DuckDBDataFrame)
-ddb <- DuckDBDataFrame("nc.parquet")
-ddb$geometry  # Native GEOMETRY column
+    # Read back in DuckDB
+    ddb <- DuckDBDataFrame::DuckDBDataFrame(nc_path)
+    ddb$geometry  # Native GEOMETRY column
+
+    unlink(c(nc_path, pts_path))
+}
 }
 
 }

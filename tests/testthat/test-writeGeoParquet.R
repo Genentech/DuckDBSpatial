@@ -48,10 +48,11 @@ test_that("writeGeoParquet records the CRS and omits an unknown bbox", {
     DuckDBSpatial::writeGeoParquet(pts, path)
 
     kvm <- nanoparquet::read_parquet_metadata(path)$file_meta_data$key_value_metadata[[1]]
-    geo <- jsonlite::fromJSON(kvm$value[kvm$key == "geo"])
+    geo <- jsonlite::fromJSON(kvm$value[kvm$key == "geo"], simplifyVector = FALSE)
     cs <- geo$columns$geometry
     expect_false(is.null(cs$crs))
-    expect_true(grepl("UTM zone 33N", cs$crs))          # WKT2 of EPSG:32633
+    expect_type(cs$crs, "list")
+    expect_identical(cs$crs$name, "WGS 84 / UTM zone 33N")
     expect_equal(unlist(cs$bbox), c(500000, 4649776, 500100, 4649876))
 
     # An empty geometry has a non-finite extent → bbox must be OMITTED (not

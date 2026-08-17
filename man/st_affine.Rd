@@ -27,6 +27,18 @@ homogeneous). Errors if the transform is not 2-D-expressible (e.g. a
 dimensionality change). For point layers stored as \code{x}/\code{y} columns
 rather than a geometry column, use \code{\link{transformLayer}}.
 }
+\examples{
+spatial_path <- system.file("extdata", "spatial", "type=polygon",
+                            package = "DuckDBSpatial")
+df <- DuckDBDataFrame::DuckDBDataFrame(spatial_path)
+geom <- df[["geometry"]]
+
+# doubling both x and y scale quadruples the area
+sf::st_area(geom)
+scaled <- st_affine(geom, ctScale(c(2, 2)))
+sf::st_area(scaled)
+
+}
 \seealso{
 \code{\link{coordinate-transforms}}, \code{\link{transformLayer}}
 }

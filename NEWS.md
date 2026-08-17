@@ -1,3 +1,36 @@
+# DuckDBSpatial 0.99.5
+
+## Bug fixes
+
+- `writeGeoParquet()` wrote the GeoParquet `crs` metadata field as a raw
+  WKT2 string instead of the PROJJSON object the GeoParquet 1.0.0 spec
+  requires, which made DuckDB itself refuse to read back any file written
+  with a CRS set (`"Geoparquet column 'geometry' has invalid CRS"`). Fixed
+  via `wk::wk_crs_projjson()` (`wk` is already a transitive dependency via
+  `sf`); added `wk` to `Imports`. Only surfaced once the `writeGeoParquet()`
+  example was made to actually run (see Documentation below).
+
+## Documentation
+
+- Added explanatory prose and links to `sf` documentation throughout both
+  vignettes, for readers unfamiliar with `sf`: geometry columns/WKB,
+  `st_geometry_type()`/`st_area()`, `st_centroid()`/WKT via
+  `st_as_text()`, the `st_point()`/`st_sfc()` query-geometry idiom, WKT
+  string literals passed to `st_as_sfc()`, and `st_sf()`.
+- Added runnable `@examples` to `asCoordinateTransform()`, `st_affine()`,
+  and `writeGeoParquet()` (previously undocumented, or `\dontrun`-only).
+- `writeGeoParquet.Rd`'s example switched from `\dontrun` to `\donttest`.
+- Added `inst/scripts/make-extdata-spatial.R`, documenting the bundled
+  `inst/extdata/spatial` fixtures as hand-authored synthetic data (the
+  canonical OGC/Wikipedia WKT example shapes for each geometry type, plus
+  one `EMPTY` and one `NULL` geometry per type for edge-case testing),
+  licensed under this package's own MIT license.
+
+## Internal changes
+
+- Removed `.st_point_sql()`, dead code superseded by the exported
+  `st_point_sql()`.
+
 # DuckDBSpatial 0.99.4
 
 ## Documentation

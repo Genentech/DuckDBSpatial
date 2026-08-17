@@ -18,3 +18,13 @@ from JSON) into a \code{\link{coordinate-transforms}} object, recursing
 through \code{sequence} / \code{byDimension} / \code{bijection}. A
 \code{CoordinateTransform} passes through unchanged.
 }
+\examples{
+asCoordinateTransform(list(type = "identity"))
+asCoordinateTransform(list(type = "scale", scale = c(2, 3)))
+asCoordinateTransform(list(type = "translation", translation = c(1, -1)))
+
+# a CoordinateTransform passes through unchanged
+ct <- ctScale(c(2, 3))
+identical(asCoordinateTransform(ct), ct)
+
+}

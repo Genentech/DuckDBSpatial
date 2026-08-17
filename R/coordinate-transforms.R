@@ -149,6 +149,16 @@ ctBijection <- function(forward, inverse) {
 #'
 #' @param x A \code{CoordinateTransform} or a transform dict (named list).
 #' @return A \code{CoordinateTransform}.
+#'
+#' @examples
+#' asCoordinateTransform(list(type = "identity"))
+#' asCoordinateTransform(list(type = "scale", scale = c(2, 3)))
+#' asCoordinateTransform(list(type = "translation", translation = c(1, -1)))
+#'
+#' # a CoordinateTransform passes through unchanged
+#' ct <- ctScale(c(2, 3))
+#' identical(asCoordinateTransform(ct), ct)
+#'
 #' @export
 asCoordinateTransform <- function(x) {
     if (inherits(x, "CoordinateTransform")) return(x)
