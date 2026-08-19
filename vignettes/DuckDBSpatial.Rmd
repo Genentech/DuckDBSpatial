@@ -117,8 +117,9 @@ so the values are in raw coordinate units rather than a real-world unit like
 square meters).
 
 Measurements (`st_area()`, `st_length()`, `st_perimeter()`) and geometry
-transforms (`st_centroid()`, `st_buffer()`, `st_convex_hull()`) all return **lazy
-`DuckDBColumn`s**, nothing is computed until the values are pulled:
+transforms (`st_centroid()`, `st_buffer()`, `st_convex_hull()`) all return
+**lazy `DuckDBColumn` objects**, nothing is computed until the values are
+pulled:
 
 ```{r transforms, eval=.spatial_ok}
 centroids <- st_centroid(geom)  # each geometry's geometric center point

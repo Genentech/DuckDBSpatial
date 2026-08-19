@@ -1,3 +1,14 @@
+# DuckDBSpatial 0.99.6
+
+## Documentation
+
+- Fixed two instances of `` `Type`s `` in the vignettes (a plural "s"
+  immediately after a closing code-span backtick, e.g. "lazy
+  `` `DuckDBColumn`s ``"), which renders with a visible gap that reads
+  like a separate word "s". Reworded to "lazy `DuckDBColumn` objects" /
+  "lazy `DuckDBDataFrame` objects" instead of moving the "s" inside the
+  backticks, since neither class name is actually plural.
+
 # DuckDBSpatial 0.99.5
 
 ## Bug fixes

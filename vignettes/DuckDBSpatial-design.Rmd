@@ -162,8 +162,8 @@ comes from `r Biocpkg("DuckDBDataFrame")`.
 
 The main consumer is `r Biocpkg("BiocDuckDB")`: a `MultiAssaySpatialExperiment`
 writes its spatial layers (cell boundaries, landmarks) as GeoParquet via
-`writeGeoParquet()`, and reads them back as lazy `DuckDBDataFrame`s with
-`GEOMETRY` columns, so a spatial experiment keeps its geometry on disk and
+`writeGeoParquet()`, and reads them back as lazy `DuckDBDataFrame` objects
+with `GEOMETRY` columns, so a spatial experiment keeps its geometry on disk and
 queries it through the same `r CRANpkg("sf")` API used here.
 
 # Session information
