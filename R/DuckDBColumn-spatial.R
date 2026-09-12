@@ -331,7 +331,7 @@
 #' @examples
 #' spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
 #' df <- DuckDBDataFrame(spatial_path)
-#' df <- df[which(!is.na(df$type)), ]
+#' df <- df[!is.na(df$type), ]
 #' geom <- df[["geometry"]]
 #' st_geometry_type(geom)[1:3]
 #' st_area(geom)[1:3]

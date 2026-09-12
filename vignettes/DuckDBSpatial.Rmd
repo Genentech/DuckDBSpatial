@@ -101,7 +101,7 @@ without materializing the table.
 ```{r columns, eval=.spatial_ok}
 spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
 df <- DuckDBDataFrame(spatial_path)
-df <- df[which(!is.na(df$type)), ]
+df <- df[!is.na(df$type), ]
 
 geom <- df[["geometry"]]
 head(st_geometry_type(geom))  # one of POINT, LINESTRING, POLYGON, ... per row

@@ -97,7 +97,7 @@ column method is a lazy `DuckDBColumn`; the result of `st_filter()` is a lazy
 ```{r sql-demo, eval=.spatial_ok}
 spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
 df <- DuckDBDataFrame(spatial_path)
-df <- df[which(!is.na(df$type)), ]
+df <- df[!is.na(df$type), ]
 
 # df[["geometry"]] is an sf-style geometry column (a list, one WKB-encoded
 # shape per row); see the "Lazy spatial columns" section of the introduction

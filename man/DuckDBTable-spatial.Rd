@@ -490,7 +490,7 @@ lazy queries.
 \examples{
 spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
 df <- DuckDBDataFrame(spatial_path)
-df <- df[which(!is.na(df$type)), ]
+df <- df[!is.na(df$type), ]
 query_pt <- sf::st_sfc(sf::st_point(c(30, 10)))
 filtered <- st_filter(df, query_pt)
 nrow(filtered)

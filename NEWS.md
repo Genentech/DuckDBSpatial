@@ -1,3 +1,20 @@
+# DuckDBSpatial 0.99.7
+
+## Bug fixes
+
+- Both vignettes, and the `@examples` in `DuckDBColumn-spatial.R`,
+  `DuckDBTable-spatial.R`, and `DuckDBDataFrame-spatial.R` (regenerated
+  into `DuckDBColumn-spatial.Rd`, `DuckDBTable-spatial.Rd`, and
+  `layerSpatialMatch.Rd`), filtered a lazy column with
+  `df[which(!is.na(df$type)), ]`. `is.na()`/`!` on a `DuckDBColumn` return
+  another lazy `DuckDBColumn` (SQL-pushed), not a base logical vector, so
+  `which()` errored with "argument to 'which' is not logical" and broke
+  both `R CMD build` and `R CMD check`'s example checks.
+  `DuckDBDataFrame`'s row-subset method already accepts a logical
+  `DuckDBColumn` directly as `i`, pushing it down as a SQL `WHERE` filter,
+  so `which()` was unnecessary; fixed to `df[!is.na(df$type), ]`
+  everywhere.
+
 # DuckDBSpatial 0.99.6
 
 ## Documentation

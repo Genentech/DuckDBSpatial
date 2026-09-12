@@ -99,7 +99,7 @@ layerSpatialOverlaps <- function(x, y, coords = NULL, geom = "geometry") {
 #' @examples
 #' spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")
 #' shapes <- DuckDBDataFrame(spatial_path)
-#' shapes <- shapes[which(!is.na(shapes$type)), ]
+#' shapes <- shapes[!is.na(shapes$type), ]
 #' pts_path <- tempfile(fileext = ".csv")
 #' on.exit(unlink(pts_path), add = TRUE)
 #' write.csv(data.frame(x = c(1, 5, 30), y = c(1, 5, 10)), pts_path, row.names = FALSE)
