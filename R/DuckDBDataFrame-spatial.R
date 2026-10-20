@@ -5,17 +5,15 @@
 #' @importFrom DBI dbGetQuery
 #' @importFrom dbplyr sql_render
 #' @importFrom dplyr mutate pull sql
-#' @importFrom DuckDBDataFrame DuckDBDataFrame dbconn tblconn
+#' @importFrom DuckDBDataFrame dbconn tblconn
 #' @importFrom sf st_as_sfc st_as_text st_intersects
 .spatialMatch_sql <- function(x, table, coords, geom, join_fun) {
+    # Only ever called by layerSpatialMatch() below when 'table' is already
+    # a DuckDBTable; a plain sf/data.frame 'table' takes that function's
+    # separate in-memory sf::st_intersects()-based path instead.
     conn <- dbconn(x)
     x_q <- sql_render(tblconn(x, select = FALSE))
-    if (is(table, "DuckDBTable")) {
-        t_q <- sql_render(tblconn(table, select = FALSE))
-    } else {
-        tmp <- DuckDBDataFrame(as.data.frame(table))
-        t_q <- sql_render(tblconn(tmp, select = FALSE))
-    }
+    t_q <- sql_render(tblconn(table, select = FALSE))
     pred <- if (identical(join_fun, sf::st_within)) "ST_Within" else "ST_Intersects"
     pt_expr <- sprintf('ST_Point(n."%s", n."%s")', coords[1L], coords[2L])
     sql_txt <- sprintf(

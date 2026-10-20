@@ -258,15 +258,18 @@
 #'     Return rows of \code{x} that spatially match \code{y}.
 #'   }
 #'   \item{\code{st_join(x, y, join = st_intersects)}:}{
-#'     Spatial inner join of two lazy tables on \code{geometry}.
+#'     Spatial inner join of two tables on \code{geometry}; \code{x} is a
+#'     lazy table, \code{y} may be lazy or an in-memory \code{sf}/
+#'     \code{data.frame}.
 #'   }
 #'   \item{\code{st_intersects_table(x, y, sparse = TRUE)}:}{
 #'     Return a sparse index table of rows of \code{x} intersecting a
 #'     single reference geometry \code{y}.
 #'   }
 #'   \item{\code{st_join_table(x, y, join = st_intersects, sparse = TRUE)}:}{
-#'     Return a sparse (id_x, id_y) index table of row pairs between two
-#'     lazy tables \code{x} and \code{y} matching a spatial predicate.
+#'     Return a sparse (id_x, id_y) index table of row pairs between
+#'     \code{x} and \code{y} (either lazy or an in-memory \code{sf}/
+#'     \code{data.frame}) matching a spatial predicate.
 #'   }
 #' }
 #'
@@ -481,9 +484,15 @@ replaceSlots <- BiocGenerics:::replaceSlots
         return(sql(sprintf("ST_GeomFromText('%s')", sf::st_as_text(y))))
     if (inherits(y, "sfc")) {
         if (length(y) != 1L)
-            stop("'y' must be a single geometry (sfc of length 1)")
+            stop("'y' must be a single geometry (sfc of length 1); use ",
+                 "layerSpatialMatch(), st_join(), or st_join_table() to ",
+                 "match against multiple features instead")
         return(sql(sprintf("ST_GeomFromText('%s')", sf::st_as_text(y[[1L]]))))
     }
+    if (is(y, "DuckDBTable") || is.data.frame(y))
+        stop("'y' is a table with multiple features, not a single ",
+             "reference geometry; use layerSpatialMatch(), st_join(), or ",
+             "st_join_table() to match against another table instead")
     stop("unsupported geometry type: ", class(y)[1L])
 }
 
@@ -1358,9 +1367,74 @@ st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
          "the supplied 'join' was not recognized")
 }
 
+.duckdbspatial_tmp_counter <- local({
+    i <- 0L
+    function() {
+        i <<- i + 1L
+        sprintf("__duckdbspatial_tmp_%d_%d__", Sys.getpid(), i)
+    }
+})
+
+#' @importFrom DuckDBDataFrame DuckDBDataFrame acquireDuckDBConn
+#' @importFrom dplyr copy_to mutate sql
+#' @importFrom sf st_as_sfc st_as_text st_geometry st_sfc
+.as_duckdb_table <- function(x, conn = NULL) {
+    if (is(x, "DuckDBTable"))
+        return(x)
+    if (is.null(conn))
+        conn <- acquireDuckDBConn()
+    df <- as.data.frame(x, optional = TRUE)
+    if (inherits(x, "sf")) {
+        geomcol <- attr(x, "sf_column")
+        sfc <- st_geometry(x)
+    } else {
+        geomcol <- "geometry"
+        if (!geomcol %in% names(df))
+            stop("'x' must be an sf object or a data.frame with a ",
+                 "'geometry' column")
+        col <- df[[geomcol]]
+        if (inherits(col, "sfc")) {
+            sfc <- col
+        } else if (is.list(col) && all(vapply(col, function(r) is.null(r) || is.raw(r), NA))) {
+            # Matches the materialized shape of a DuckDBDataFrame's own
+            # geometry column (as.data.frame() returns raw WKB, with NULL
+            # for missing geometries). A NULL becomes an empty geometry so
+            # it simply never matches anything downstream, rather than
+            # crashing st_as_sfc.WKB()'s all-raw assertion; genuinely
+            # malformed WKB still errors, same fallback writeGeoParquet()
+            # already uses for this input shape.
+            empty_geom <- st_as_sfc("GEOMETRYCOLLECTION EMPTY")[[1L]]
+            sfc <- tryCatch(
+                st_sfc(lapply(col, function(r) {
+                    if (is.null(r)) empty_geom
+                    else st_as_sfc(structure(list(r), class = "WKB"))[[1L]]
+                })),
+                error = function(e) NULL)
+            if (is.null(sfc))
+                stop("cannot infer geometry types from WKB column; pass an sf object")
+        } else {
+            stop("'x' must be an sf object, or a data.frame whose ",
+                 "'geometry' column is an 'sfc' or a list of raw WKB")
+        }
+    }
+    df[[geomcol]] <- st_as_text(sfc)
+    tmp <- copy_to(conn, df, name = .duckdbspatial_tmp_counter(),
+                   temporary = TRUE, overwrite = TRUE)
+    # Temp table is intentionally never dropped: the DuckDBDataFrame
+    # returned below stays a lazy, un-executed query over it, matching
+    # DuckDBArray::.duckdb_matmult_copy()'s same tradeoff (dropping here
+    # would break the result before anyone materializes it).
+    geomcol_sql <- gsub('"', '""', geomcol, fixed = TRUE)
+    cast <- setNames(list(sql(sprintf('ST_GeomFromText("%s")', geomcol_sql))), geomcol)
+    tmp <- mutate(tmp, !!!cast)
+    DuckDBDataFrame(tmp)
+}
+
 #' @rdname DuckDBTable-spatial
-#' @param x A \code{DuckDBTable} or \code{DuckDBDataFrame}.
-#' @param y A \code{DuckDBTable} or \code{DuckDBDataFrame} to join against.
+#' @param x A \code{DuckDBTable}/\code{DuckDBDataFrame}, or an in-memory
+#'   \code{sf}/\code{data.frame} with a geometry column.
+#' @param y A \code{DuckDBTable}/\code{DuckDBDataFrame}, or an in-memory
+#'   \code{sf}/\code{data.frame} with a geometry column, to join against.
 #' @param join Spatial predicate function (default \code{st_intersects}).
 #' @param ... Ignored.
 #' @exportS3Method sf::st_join
@@ -1368,6 +1442,7 @@ st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
 #' @importFrom dbplyr sql_render
 #' @importFrom sf st_join st_intersects
 st_join.DuckDBTable <- function(x, y, join = st_intersects, ...) {
+    y <- .as_duckdb_table(y, dbconn(x))
     pred <- .st_predicate_sql_name(join)
     conn <- dbconn(x)
     x_q <- sql_render(tblconn(x, select = FALSE))
@@ -1381,12 +1456,12 @@ st_join.DuckDBTable <- function(x, y, join = st_intersects, ...) {
 #' @rdname DuckDBTable-spatial
 #' @param sparse Logical; return a lazy table when \code{TRUE} (default).
 #' @export
-#' @importFrom DuckDBDataFrame tblconn dbconn
+#' @importFrom DuckDBDataFrame DuckDBDataFrame tblconn dbconn
 #' @importFrom dbplyr sql_render
 #' @importFrom sf st_intersects
 st_join_table <- function(x, y, join = st_intersects, sparse = TRUE, ...) {
-    if (!is(x, "DuckDBTable") || !is(y, "DuckDBTable"))
-        stop("'x' and 'y' must both be a DuckDBTable or DuckDBDataFrame")
+    x <- .as_duckdb_table(x)
+    y <- .as_duckdb_table(y, dbconn(x))
     pred <- .st_predicate_sql_name(join)
     conn <- dbconn(x)
     x_q <- sql_render(tblconn(x, select = FALSE))

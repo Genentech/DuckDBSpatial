@@ -271,6 +271,7 @@ importFrom(S4Vectors,
 )
 importFrom(dbplyr,sql_render)
 importFrom(dplyr,
+  copy_to,
   group_by,
   mutate,
   pull,
@@ -312,6 +313,7 @@ importFrom(sf,
   st_normalize,
   st_point_on_surface,
   st_reverse,
+  st_sfc,
   st_simplify,
   st_union,
   st_voronoi

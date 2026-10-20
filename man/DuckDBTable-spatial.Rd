@@ -175,7 +175,8 @@ st_envelope_agg(x, by = NULL, ...)
 
 \item{x}{A \code{DuckDBColumn} or \code{DuckDBTable} geometry column.}
 
-\item{y}{A \code{DuckDBTable} or \code{DuckDBDataFrame} to join against.}
+\item{y}{A \code{DuckDBTable}/\code{DuckDBDataFrame}, or an in-memory
+\code{sf}/\code{data.frame} with a geometry column, to join against.}
 
 \item{sparse}{Logical; return a lazy table when \code{TRUE} (default).}
 
@@ -465,15 +466,18 @@ predicates) and returns a GEOMETRY DuckDBTable.
     Return rows of \code{x} that spatially match \code{y}.
   }
   \item{\code{st_join(x, y, join = st_intersects)}:}{
-    Spatial inner join of two lazy tables on \code{geometry}.
+    Spatial inner join of two tables on \code{geometry}; \code{x} is a
+    lazy table, \code{y} may be lazy or an in-memory \code{sf}/
+    \code{data.frame}.
   }
   \item{\code{st_intersects_table(x, y, sparse = TRUE)}:}{
     Return a sparse index table of rows of \code{x} intersecting a
     single reference geometry \code{y}.
   }
   \item{\code{st_join_table(x, y, join = st_intersects, sparse = TRUE)}:}{
-    Return a sparse (id_x, id_y) index table of row pairs between two
-    lazy tables \code{x} and \code{y} matching a spatial predicate.
+    Return a sparse (id_x, id_y) index table of row pairs between
+    \code{x} and \code{y} (either lazy or an in-memory \code{sf}/
+    \code{data.frame}) matching a spatial predicate.
   }
 }
 }

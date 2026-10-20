@@ -23,6 +23,31 @@
   final result would silently return that stale data value instead of a
   row index, with no warning. Added a regression test using an injected
   colliding `id_x`/`id_y` column.
+- `st_join.DuckDBTable`/`st_join_table` now also accept an in-memory `sf`
+  object (or a `data.frame` with an `sfc` or raw-WKB-list geometry column,
+  the latter matching the shape `as.data.frame()` on a `DuckDBDataFrame`'s
+  own geometry column already produces) on either side, not just lazy
+  tables, closing a real gap flagged by a user comparing against
+  `duckspatial::ddbs_intersects()`. New internal `.as_duckdb_table()`
+  materializes the in-memory side by converting its geometry to WKT
+  (`sf::st_as_text()`, the same idiom `.geom_to_sql()` already uses for a
+  single geometry) and copying it into a temp DuckDB table via
+  `dplyr::copy_to()`, then casting back to native `GEOMETRY` with
+  `ST_GeomFromText()`; the temp-table name uses the same PID+counter
+  convention `DuckDBArray::.duckdb_matmult_copy()` already established to
+  avoid the `dbplyr::unique_table_name()` global-RNG collision class fixed
+  in `DuckDBArray` 0.99.9. Chosen over `writeGeoParquet()` + a tempfile
+  (the only other working materialization path in this package) since that
+  would pull in `nanoparquet` as a hard dependency (currently `Suggests`
+  only) and add disk I/O for what's typically the small side of a join;
+  CRS is not preserved either way, consistent with `.geom_to_sql()`'s
+  existing CRS-less `ST_GeomFromText()` usage, so this isn't a new
+  limitation. Also removed `.spatialMatch_sql()`'s dead `else` branch
+  (`DuckDBDataFrame-spatial.R`): it attempted the same `DuckDBDataFrame(
+  as.data.frame(table))` call that didn't actually work (its only caller,
+  `layerSpatialMatch()`, never reaches it with a non-`DuckDBTable` `table`,
+  taking a separate in-memory `sf::st_intersects()` path instead), so it
+  was unreachable, untested dead code.
 
 ## Bug fixes
 

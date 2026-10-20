@@ -263,7 +263,56 @@ test_that("st_join_table returns a sparse id_x/id_y pair table for two lazy tabl
     # already-established full-attribute st_join(df, df) above.
     expect_equal(nrow(pairs_df), nrow(as.data.frame(st_join(df, df))))
 
-    expect_error(st_join_table(df, as.data.frame(df)), "must both be")
+    # as.data.frame() on a lazy table materializes its geometry column as a
+    # list of raw WKB (DuckDBDataFrame's own on-disk shape), which must round-
+    # trip back into a working join rather than erroring on the type.
+    mem_pairs <- as.data.frame(st_join_table(df, as.data.frame(df)))
+    expect_equal(nrow(mem_pairs), nrow(pairs_df))
+
+    expect_error(st_join_table(df, data.frame(a = 1:3)), "'geometry' column")
+})
+
+test_that("st_join/st_join_table accept an in-memory sf object on either side", {
+    df <- DuckDBDataFrame(spatial_path)
+    df <- df[which(!is.na(spatial_wkt)), ]
+
+    poly_sf <- st_sf(id = 1:2, geometry = st_sfc(
+        st_polygon(list(matrix(c(0, 0, 6, 0, 6, 6, 0, 6, 0, 0), ncol = 2, byrow = TRUE))),
+        st_polygon(list(matrix(c(20, 5, 40, 5, 40, 15, 20, 15, 20, 5), ncol = 2, byrow = TRUE)))))
+
+    lazy_mem <- as.data.frame(st_join_table(df, poly_sf))
+    mem_lazy <- as.data.frame(st_join_table(poly_sf, df))
+    expect_equal(nrow(lazy_mem), nrow(mem_lazy))
+    expect_true(nrow(lazy_mem) > 0L)
+
+    mem_mem <- as.data.frame(st_join_table(poly_sf, poly_sf))
+    expect_equal(nrow(mem_mem), 2L)
+
+    joined <- st_join(df, poly_sf)
+    expect_s4_class(joined, "DuckDBDataFrame")
+    expect_equal(nrow(joined), nrow(lazy_mem))
+})
+
+test_that("st_join_table tolerates NULL/missing geometries in a materialized WKB column", {
+    # as.data.frame() on an unfiltered DuckDBDataFrame legitimately contains
+    # NULL geometries; these must become empty geometries (never matching
+    # anything) rather than crashing st_as_sfc.WKB()'s all-raw assertion.
+    mem_df <- as.data.frame(DuckDBDataFrame(spatial_path))
+    expect_true(any(vapply(mem_df$geometry, is.null, logical(1))))
+
+    poly_sf <- st_sf(id = 1, geometry = st_sfc(st_polygon(list(
+        matrix(c(0, 0, 40, 0, 40, 40, 0, 40, 0, 0), ncol = 2, byrow = TRUE)))))
+    pairs <- as.data.frame(st_join_table(mem_df, poly_sf))
+    expect_true(all(pairs$id_x %in% seq_len(nrow(mem_df))))
+})
+
+test_that(".geom_to_sql()'s redirect errors reference real DuckDBSpatial functions", {
+    df <- DuckDBDataFrame(spatial_path)
+    df <- df[which(!is.na(spatial_wkt)), ]
+
+    expect_error(sf::st_intersects(df, df), "layerSpatialMatch")
+    expect_error(sf::st_intersects(df, st_sfc(st_point(c(0, 0)), st_point(c(1, 1)))),
+                "layerSpatialMatch")
 })
 
 test_that("st_join_table does not collide with a pre-existing id_x/id_y data column", {
