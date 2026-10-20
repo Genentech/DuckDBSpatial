@@ -261,7 +261,12 @@
 #'     Spatial inner join of two lazy tables on \code{geometry}.
 #'   }
 #'   \item{\code{st_intersects_table(x, y, sparse = TRUE)}:}{
-#'     Return a sparse index table of intersecting row pairs.
+#'     Return a sparse index table of rows of \code{x} intersecting a
+#'     single reference geometry \code{y}.
+#'   }
+#'   \item{\code{st_join_table(x, y, join = st_intersects, sparse = TRUE)}:}{
+#'     Return a sparse (id_x, id_y) index table of row pairs between two
+#'     lazy tables \code{x} and \code{y} matching a spatial predicate.
 #'   }
 #' }
 #'
@@ -431,6 +436,7 @@
 #' @aliases st_filter.DuckDBTable
 #' @aliases st_join.DuckDBTable
 #' @aliases st_intersects_table
+#' @aliases st_join_table
 #' @aliases st_make_envelope_sql
 #' @aliases st_point_sql
 #' @aliases st_geomfromtext_sql
@@ -1370,6 +1376,32 @@ st_join.DuckDBTable <- function(x, y, join = st_intersects, ...) {
         "SELECT x.*, y.* FROM (%s) x INNER JOIN (%s) y ON %s(x.geometry, y.geometry)",
         x_q, y_q, pred)
     .lazy_sql_ddf(conn, sql_txt)
+}
+
+#' @rdname DuckDBTable-spatial
+#' @param sparse Logical; return a lazy table when \code{TRUE} (default).
+#' @export
+#' @importFrom DuckDBDataFrame tblconn dbconn
+#' @importFrom dbplyr sql_render
+#' @importFrom sf st_intersects
+st_join_table <- function(x, y, join = st_intersects, sparse = TRUE, ...) {
+    if (!is(x, "DuckDBTable") || !is(y, "DuckDBTable"))
+        stop("'x' and 'y' must both be a DuckDBTable or DuckDBDataFrame")
+    pred <- .st_predicate_sql_name(join)
+    conn <- dbconn(x)
+    x_q <- sql_render(tblconn(x, select = FALSE))
+    y_q <- sql_render(tblconn(y, select = FALSE))
+    sql_txt <- sprintf(
+        paste0("SELECT x.__rowid__ AS id_x, y.__rowid__ AS id_y ",
+               "FROM (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) x ",
+               "INNER JOIN (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) y ",
+               "ON %s(x.geometry, y.geometry)"),
+        x_q, y_q, pred)
+    if (isTRUE(sparse)) {
+        .lazy_sql_ddf(conn, sql_txt)
+    } else {
+        sql_txt
+    }
 }
 
 #' @importFrom DuckDBDataFrame DuckDBTable tblconn

@@ -251,6 +251,37 @@ test_that("Spatial table joins work as expected for a DuckDBTable", {
     expect_true(nrow(joined) >= nrow(df))
 })
 
+test_that("st_join_table returns a sparse id_x/id_y pair table for two lazy tables", {
+    df <- DuckDBDataFrame(spatial_path)
+    df <- df[which(!is.na(spatial_wkt)), ]
+
+    pairs <- st_join_table(df, df)
+    expect_s4_class(pairs, "DuckDBDataFrame")
+    pairs_df <- as.data.frame(pairs)
+    expect_setequal(colnames(pairs_df), c("id_x", "id_y"))
+    # Same predicate, same tables: must have exactly as many pairs as the
+    # already-established full-attribute st_join(df, df) above.
+    expect_equal(nrow(pairs_df), nrow(as.data.frame(st_join(df, df))))
+
+    expect_error(st_join_table(df, as.data.frame(df)), "must both be")
+})
+
+test_that("st_join_table does not collide with a pre-existing id_x/id_y data column", {
+    df <- DuckDBDataFrame(spatial_path)
+    df <- df[which(!is.na(spatial_wkt)), ]
+    conn <- DuckDBDataFrame::dbconn(df)
+    q <- dbplyr::sql_render(DuckDBDataFrame::tblconn(df, select = FALSE))
+    # A real data column named id_x/id_y (same names st_join_table's output
+    # uses) must not shadow the row_number() it assigns internally.
+    tagged <- DuckDBDataFrame(dplyr::tbl(conn, dplyr::sql(
+        sprintf("SELECT *, 999 AS id_x, 999 AS id_y FROM (%s)", q))))
+
+    pairs <- as.data.frame(st_join_table(tagged, tagged))
+    expect_false(any(pairs$id_x == 999L))
+    expect_true(all(pairs$id_x %in% seq_len(nrow(tagged))))
+    expect_true(all(pairs$id_y %in% seq_len(nrow(tagged))))
+})
+
 test_that("st_join maps the sf predicate to its ST_* SQL function", {
     resolve <- DuckDBSpatial:::.st_predicate_sql_name
     expect_equal(resolve(sf::st_intersects), "ST_Intersects")

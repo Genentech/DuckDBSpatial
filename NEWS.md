@@ -1,4 +1,28 @@
-# DuckDBSpatial 0.99.7
+# DuckDBSpatial 0.99.8
+
+## New features
+
+- Added `st_join_table(x, y, join = st_intersects, sparse = TRUE)`: a sparse
+  `(id_x, id_y)` row-pair analogue of the existing `st_join.DuckDBTable`,
+  for two lazy `DuckDBTable`/`DuckDBDataFrame` layers. `st_intersects_table()`
+  only ever supported testing `x` against a single reference geometry (its
+  `y` goes through `.geom_to_sql()`, which has no case for another lazy
+  table), so there was no way to get a sparse match table between two
+  out-of-core layers short of materializing the full attribute join via
+  `st_join()`. `st_join_table()` closes that gap with the same
+  `INNER JOIN ... ON <predicate>(x.geometry, y.geometry)` approach as
+  `st_join.DuckDBTable`, honoring the `join=` predicate via the same
+  `.st_predicate_sql_name()` mapping, just projecting row-pair ids instead
+  of full attributes. Internally assigns row ids via the same `__rowid__`
+  alias convention `st_intersects_table()` already uses rather than
+  `id_x`/`id_y` directly: an independent review before this shipped caught
+  that the first draft used `id_x`/`id_y` as the *internal* alias too, so a
+  table with its own pre-existing `id_x`/`id_y` data column (plausible,
+  since that's exactly this function's own output name) would silently
+  collide -- DuckDB auto-renames the duplicate rather than erroring, so the
+  final result would silently return that stale data value instead of a
+  row index, with no warning. Added a regression test using an injected
+  colliding `id_x`/`id_y` column.
 
 ## Bug fixes
 
