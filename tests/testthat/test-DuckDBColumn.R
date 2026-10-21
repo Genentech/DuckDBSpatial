@@ -306,6 +306,31 @@ test_that("st_join_table tolerates NULL/missing geometries in a materialized WKB
     expect_true(all(pairs$id_x %in% seq_len(nrow(mem_df))))
 })
 
+test_that("st_join_table accepts a plain WKT-text geometry column", {
+    # MultiAssaySpatialExperiment's own idiomatic DataFrame shape (see its
+    # spatialJoin,DataFrame,DataFrame-method) stores geometry as WKT text,
+    # not sfc or WKB.
+    df <- DuckDBDataFrame(spatial_path)
+    df <- df[which(!is.na(spatial_wkt)), ]
+
+    wkt_df <- data.frame(id = 1:2, geometry = c(
+        "POLYGON((0 0, 6 0, 6 6, 0 6, 0 0))",
+        "POLYGON((20 5, 40 5, 40 15, 20 15, 20 5))"))
+    pairs <- as.data.frame(st_join_table(df, wkt_df))
+    expect_true(nrow(pairs) > 0L)
+
+    # A NULL/NA geometry must become an empty geometry (never matching
+    # anything) rather than crashing st_as_sfc() on the missing value.
+    wkt_df_na <- data.frame(id = 1:3, geometry = c(
+        "POLYGON((0 0, 6 0, 6 6, 0 6, 0 0))", NA_character_,
+        "POLYGON((20 5, 40 5, 40 15, 20 15, 20 5))"))
+    pairs_na <- as.data.frame(st_join_table(df, wkt_df_na))
+    expect_false(2L %in% pairs_na$id_y)
+
+    expect_error(st_join_table(df, data.frame(id = 1, geometry = "not a geometry")),
+                "cannot parse WKT geometry column")
+})
+
 test_that(".geom_to_sql()'s redirect errors reference real DuckDBSpatial functions", {
     df <- DuckDBDataFrame(spatial_path)
     df <- df[which(!is.na(spatial_wkt)), ]

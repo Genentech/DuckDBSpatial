@@ -1395,14 +1395,12 @@ st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
         col <- df[[geomcol]]
         if (inherits(col, "sfc")) {
             sfc <- col
+        } else if (is.character(col)) {
+            col[is.na(col)] <- "GEOMETRYCOLLECTION EMPTY"
+            sfc <- tryCatch(st_as_sfc(col), error = function(e) NULL)
+            if (is.null(sfc))
+                stop("cannot parse WKT geometry column; pass an sf object")
         } else if (is.list(col) && all(vapply(col, function(r) is.null(r) || is.raw(r), NA))) {
-            # Matches the materialized shape of a DuckDBDataFrame's own
-            # geometry column (as.data.frame() returns raw WKB, with NULL
-            # for missing geometries). A NULL becomes an empty geometry so
-            # it simply never matches anything downstream, rather than
-            # crashing st_as_sfc.WKB()'s all-raw assertion; genuinely
-            # malformed WKB still errors, same fallback writeGeoParquet()
-            # already uses for this input shape.
             empty_geom <- st_as_sfc("GEOMETRYCOLLECTION EMPTY")[[1L]]
             sfc <- tryCatch(
                 st_sfc(lapply(col, function(r) {

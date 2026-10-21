@@ -1,3 +1,21 @@
+# DuckDBSpatial 0.99.9
+
+## New features
+
+- `.as_duckdb_table()` (the in-memory materializer backing `st_join`/
+  `st_join_table`'s `sf`/`data.frame` support, added in 0.99.8) now also
+  accepts a plain WKT-text geometry column, not just `sfc` or raw WKB.
+  `MultiAssaySpatialExperiment`'s own idiomatic `DataFrame` shape (see its
+  `spatialJoin,DataFrame,DataFrame-method`) stores geometry as WKT
+  character strings, the same single-geometry shape `.geom_to_sql()`
+  already parses, now generalized to a whole column via `sf::st_as_sfc()`.
+  `sf::st_as_sfc()` errors outright on `NA` rather than tolerating it the
+  way the `sfg`/WKB paths do, so an `NA` entry is substituted with
+  `"GEOMETRYCOLLECTION EMPTY"` first (same never-matches-anything
+  semantics as the `NULL`-handling added for the WKB-list case). Added
+  regression tests covering a working WKT column, an `NA` entry, and
+  genuinely unparseable WKT text.
+
 # DuckDBSpatial 0.99.8
 
 ## New features
