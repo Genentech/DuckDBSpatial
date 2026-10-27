@@ -242,6 +242,24 @@ test_that("Spatial SQL helpers work as expected for a DuckDBTable", {
     expect_match(as.character(wkt), "ST_GeomFromText")
 })
 
+test_that("hasGeometry detects a GEOMETRY-typed column without materializing a query", {
+    shapes <- DuckDBDataFrame(spatial_path)
+    expect_true(hasGeometry(shapes))
+    expect_false(hasGeometry(shapes, "type"))
+    expect_false(hasGeometry(shapes, "nonexistent_column"))
+
+    # A table with no geometry column at all (the motivating case: calling
+    # a geometry accessor on this applies its SQL predicate to every
+    # column and only errors once materialized, not when built).
+    non_spatial_path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(non_spatial_path), add = TRUE)
+    arrow::write_parquet(data.frame(a = 1:3, b = c("x", "y", "z")), non_spatial_path)
+    plain <- DuckDBDataFrame(non_spatial_path)
+    expect_false(hasGeometry(plain))
+
+    expect_error(hasGeometry(data.frame(x = 1)), "DuckDBTable or DuckDBDataFrame")
+})
+
 test_that("Spatial table joins work as expected for a DuckDBTable", {
     df <- DuckDBDataFrame(spatial_path)
     df <- df[which(!is.na(spatial_wkt)), ]

@@ -3,6 +3,7 @@
 \name{DuckDBTable-spatial}
 \alias{DuckDBTable-spatial}
 \alias{st_as_sfc.DuckDBTable}
+\alias{hasGeometry}
 \alias{st_as_binary.DuckDBTable}
 \alias{st_as_text.DuckDBTable}
 \alias{st_dimension}
@@ -216,6 +217,20 @@ In the code snippets below, \code{x} is a DuckDBTable object.
   \item{\code{st_as_text(x, geojson = FALSE)}:}{
     Converts to WKT (\code{ST_AsText}) or GeoJSON
     (\code{ST_AsGeoJSON}).
+  }
+}
+}
+
+\section{Introspection}{
+
+\describe{
+  \item{\code{hasGeometry(x, geom = "geometry")}:}{
+    Logical: does \code{x} have a column named \code{geom} that is
+    actually \code{GEOMETRY}-typed? Every function in \emph{Geometry
+    Accessors}/\emph{Measurement}/\emph{Unary Geometry Operations}
+    below applies its SQL predicate to every column of \code{x}, and
+    only errors once the query is materialized, not when it's built;
+    use this to check first rather than find out later.
   }
 }
 }

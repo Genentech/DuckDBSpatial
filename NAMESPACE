@@ -186,6 +186,7 @@ export(ctScale)
 export(ctSequence)
 export(ctTranslation)
 export(enableGeoParquetConversion)
+export(hasGeometry)
 export(layerBboxRange)
 export(layerSpatialMatch)
 export(layerSpatialOverlaps)
@@ -259,6 +260,7 @@ importFrom(DuckDBDataFrame,
   acquireDuckDBConn,
   buildParquetCopySQL,
   clusterSort,
+  coltypes,
   dbconn,
   loadExtension,
   sql_call,

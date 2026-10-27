@@ -1,3 +1,25 @@
+# DuckDBSpatial 0.99.10
+
+## New features
+
+- Added `hasGeometry(x, geom = "geometry")`: reported by a user
+  (`st_geometry_type(x)` on a `DuckDBTable` with no geometry column
+  didn't error -- it silently built a query applying `ST_GeometryType`
+  to every column, including plain numeric/character ones, and only
+  failed once that query was actually materialized, not when printed or
+  built). That's not unique to `st_geometry_type()`: essentially every
+  unary geometry accessor/predicate in `DuckDBTable-spatial.R`
+  (`st_is_valid`, `st_area`, `st_centroid`, `st_buffer`, ...) is built on
+  the same `sql_call(x, "ST_*")`, which applies its SQL function to all
+  of `x`'s columns with no upfront check that any of them are actually
+  geometry-typed. Rather than retrofit validation into ~20 existing
+  functions, added the one primitive needed to guard any of them:
+  `hasGeometry()` checks whether `x` has a column named `geom` that is
+  genuinely `GEOMETRY`-typed, returning `FALSE` (not an error) if it's
+  missing or a different type. Built entirely on the already-exported
+  `DuckDBDataFrame::coltypes()`, which already reports `"geometry"` as a
+  distinct type value; no change to `DuckDBDataFrame` was needed.
+
 # DuckDBSpatial 0.99.9
 
 ## New features

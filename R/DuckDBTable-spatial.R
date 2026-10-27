@@ -25,6 +25,18 @@
 #'   }
 #' }
 #'
+#' @section Introspection:
+#' \describe{
+#'   \item{\code{hasGeometry(x, geom = "geometry")}:}{
+#'     Logical: does \code{x} have a column named \code{geom} that is
+#'     actually \code{GEOMETRY}-typed? Every function in \emph{Geometry
+#'     Accessors}/\emph{Measurement}/\emph{Unary Geometry Operations}
+#'     below applies its SQL predicate to every column of \code{x}, and
+#'     only errors once the query is materialized, not when it's built;
+#'     use this to check first rather than find out later.
+#'   }
+#' }
+#'
 #' @section Geometry Accessors:
 #' Scalar properties of each geometry.
 #' \describe{
@@ -298,6 +310,8 @@
 #'
 #' @aliases st_as_sfc.DuckDBTable
 #'
+#' @aliases hasGeometry
+#'
 #' @aliases st_as_binary.DuckDBTable
 #' @aliases st_as_text.DuckDBTable
 #'
@@ -542,6 +556,19 @@ st_as_binary.DuckDBTable <- function(x, ..., hex = FALSE) {
 st_as_text.DuckDBTable <- function(x, ..., geojson = FALSE) {
     fun <- if (isTRUE(geojson)) "ST_AsGeoJSON" else "ST_AsText"
     sql_call(x, fun)
+}
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Introspection methods
+###
+
+#' @export
+#' @importFrom DuckDBDataFrame coltypes
+hasGeometry <- function(x, geom = "geometry") {
+    if (!is(x, "DuckDBTable"))
+        stop("'x' must be a DuckDBTable or DuckDBDataFrame")
+    types <- coltypes(x)
+    geom %in% names(types) && isTRUE(unname(types[[geom]]) == "geometry")
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
