@@ -20,6 +20,14 @@
   `DuckDBDataFrame::coltypes()`, which already reports `"geometry"` as a
   distinct type value; no change to `DuckDBDataFrame` was needed.
 
+- `readGeoParquet(path, geom = "geometry", ...)` now warns (rather than
+  silently returning non-spatial data) when `path` has no `GEOMETRY`-typed
+  column matching `geom`, reported by the same user after noticing that
+  reading an ordinary, non-spatial parquet file produced neither an error
+  nor a warning. Built on `hasGeometry()` (above); the read itself still
+  succeeds either way, since a mislabeled or already-non-spatial file is
+  still valid tabular data.
+
 # DuckDBSpatial 0.99.9
 
 ## New features

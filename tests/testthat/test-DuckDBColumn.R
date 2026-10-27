@@ -507,3 +507,19 @@ test_that("GeoParquet I/O helpers work as expected", {
     expect_s4_class(ddb, "DuckDBDataFrame")
     expect_equal(nrow(ddb), 2L)
 })
+
+test_that("readGeoParquet warns when the file has no geometry column", {
+    non_spatial_path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(non_spatial_path), add = TRUE)
+    arrow::write_parquet(data.frame(a = 1:3, b = c("x", "y", "z")), non_spatial_path)
+
+    expect_warning(
+        ddb <- readGeoParquet(non_spatial_path),
+        "no 'geometry' GEOMETRY column found"
+    )
+    expect_s4_class(ddb, "DuckDBDataFrame")
+    expect_equal(nrow(ddb), 3L)
+
+    expect_warning(readGeoParquet(non_spatial_path, geom = "geom"), "no 'geom' GEOMETRY column found")
+    expect_no_warning(readGeoParquet(spatial_path))
+})

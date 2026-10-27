@@ -31,6 +31,11 @@ enableGeoParquetConversion <- function(conn = NULL) {
 #' Read a GeoParquet file as a lazy \code{DuckDBDataFrame}
 #'
 #' @param path Path to a GeoParquet file or directory.
+#' @param geom Geometry column name to check for after reading; warns if
+#'   \code{path} has no such \code{GEOMETRY}-typed column (see
+#'   \code{\link{hasGeometry}}), since that usually means \code{path}
+#'   isn't actually a GeoParquet file. The read itself still succeeds and
+#'   returns the (non-spatial) data either way.
 #' @param ... Passed to \code{\link[DuckDBDataFrame]{DuckDBDataFrame}}.
 #'
 #' @return A \link[DuckDBDataFrame:DuckDBDataFrame-class]{DuckDBDataFrame}.
@@ -43,7 +48,12 @@ enableGeoParquetConversion <- function(conn = NULL) {
 #'
 #' @export
 #' @importFrom DuckDBDataFrame DuckDBDataFrame
-readGeoParquet <- function(path, ...) {
+readGeoParquet <- function(path, geom = "geometry", ...) {
     enableGeoParquetConversion()
-    DuckDBDataFrame(path, ...)
+    result <- DuckDBDataFrame(path, ...)
+    if (!hasGeometry(result, geom)) {
+        warning("no '", geom, "' GEOMETRY column found in '", path, "'; ",
+                "this may not be a GeoParquet file")
+    }
+    result
 }

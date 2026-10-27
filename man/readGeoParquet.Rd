@@ -4,10 +4,16 @@
 \alias{readGeoParquet}
 \title{Read a GeoParquet file as a lazy \code{DuckDBDataFrame}}
 \usage{
-readGeoParquet(path, ...)
+readGeoParquet(path, geom = "geometry", ...)
 }
 \arguments{
 \item{path}{Path to a GeoParquet file or directory.}
+
+\item{geom}{Geometry column name to check for after reading; warns if
+\code{path} has no such \code{GEOMETRY}-typed column (see
+\code{\link{hasGeometry}}), since that usually means \code{path}
+isn't actually a GeoParquet file. The read itself still succeeds and
+returns the (non-spatial) data either way.}
 
 \item{...}{Passed to \code{\link[DuckDBDataFrame]{DuckDBDataFrame}}.}
 }
