@@ -1,3 +1,21 @@
+# DuckDBSpatial 0.99.11
+
+## Bug fixes
+
+- `st_as_sfc()` on a `DuckDBTable`/`DuckDBDataFrame` unconditionally applied
+  `ST_GeomFromText`/`ST_GeomFromWKB`/`ST_GeomFromGeoJSON` to every column,
+  assuming the column was always stored as WKT/WKB/GeoJSON text needing
+  conversion into `GEOMETRY`. Reported by a user calling `st_as_sfc()` on
+  the result of `readGeoParquet()`, whose geometry column is already a
+  native (and, since it round-tripped through GeoParquet, CRS-tagged, e.g.
+  `GEOMETRY('OGC:CRS84')`) `GEOMETRY` type: `ST_GeomFromText` only accepts
+  `VARCHAR`, so the query failed at materialization with a DuckDB binder
+  error ("No function matches the given name and argument types
+  'ST_GeomFromText(GEOMETRY(...))'"), regardless of what CRS was set.
+  `st_as_sfc()` now checks each column's type via `coltypes()` first and
+  leaves already-`GEOMETRY`-typed columns untouched, only applying the
+  WKT/WKB/GeoJSON conversion to columns that actually need it.
+
 # DuckDBSpatial 0.99.10
 
 ## New features

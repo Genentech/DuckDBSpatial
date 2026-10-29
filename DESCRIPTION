@@ -1,6 +1,6 @@
 Package: DuckDBSpatial
-Version: 0.99.10
-Date: 2026-10-27
+Version: 0.99.11
+Date: 2026-10-29
 Title: DuckDB-Backed Spatial Data Structures
 Description:
     Provides DuckDB-backed implementations of spatial data structures for efficient

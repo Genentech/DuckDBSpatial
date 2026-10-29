@@ -523,3 +523,22 @@ test_that("readGeoParquet warns when the file has no geometry column", {
     expect_warning(readGeoParquet(non_spatial_path, geom = "geom"), "no 'geom' GEOMETRY column found")
     expect_no_warning(readGeoParquet(spatial_path))
 })
+
+test_that("st_as_sfc is a no-op on a column already stored as GEOMETRY", {
+    skip_if_not_installed("nanoparquet")
+    pts <- st_sfc(st_point(0:1), st_point(2:3), crs = 4326)
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path), add = TRUE)
+    writeGeoParquet(pts, path)
+
+    # readGeoParquet() reads the geometry column back as native GEOMETRY, so
+    # applying ST_GeomFromText() to it (as st_as_sfc() does for a VARCHAR/WKT
+    # column) is a type mismatch at the DuckDB binder, not just a no-op --
+    # it must be detected and skipped.
+    ddb <- readGeoParquet(path)
+    expect_identical(unname(coltypes(ddb)), "geometry")
+    result <- expect_silent(st_as_sfc(ddb))
+    expect_s4_class(result, "DuckDBDataFrame")
+    expect_identical(unname(coltypes(result)), "geometry")
+    expect_equal(st_as_text(result), st_as_text(ddb))
+})

@@ -529,13 +529,24 @@ st_make_envelope_sql <- function(xmin, ymin, xmax, ymax) {
 ###
 
 #' @exportS3Method sf::st_as_sfc
-#' @importFrom DuckDBDataFrame sql_call
+#' @importFrom DuckDBDataFrame coltypes
 #' @importFrom sf st_as_sfc
 st_as_sfc.DuckDBTable <-
 function(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE) {
     fun <- if (isTRUE(WKB)) "ST_GeomFromWKB" else if (isTRUE(GeoJSON))
         "ST_GeomFromGeoJSON" else "ST_GeomFromText"
-    sql_call(x, fun)
+    # Columns already stored as native GEOMETRY (e.g. after readGeoParquet())
+    # are left as-is: ST_GeomFromText/WKB/GeoJSON all expect VARCHAR/BLOB
+    # input and error with a binder mismatch ("No function matches ...
+    # ST_GeomFromText(GEOMETRY)") when applied to an already-geometry column.
+    types <- coltypes(x)
+    datacols <- x@datacols
+    for (col in names(datacols)) {
+        if (!identical(types[[col]], "geometry"))
+            datacols[[col]] <- do.call("call", list(fun, datacols[[col]], ...),
+                                        quote = TRUE)
+    }
+    replaceSlots(x, datacols = datacols, check = FALSE)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
