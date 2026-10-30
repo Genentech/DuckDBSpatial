@@ -111,6 +111,63 @@ test_that("writeGeoParquet DuckDB reads as GEOMETRY", {
     expect_true(grepl("^GEOMETRY", geom_row$column_type))
 })
 
+test_that("writeGeoParquet append = TRUE adds rows and merges metadata", {
+    skip_if_not_installed("nanoparquet")
+    skip_if_not_installed("blob")
+    library(sf)
+
+    pts1 <- st_sf(id = 1:2, geometry = st_sfc(st_point(c(0, 0)), st_point(c(1, 1)), crs = 4326))
+    pts2 <- st_sf(id = 3:4, geometry = st_sfc(
+        st_linestring(rbind(c(5, 5), c(6, 6))), st_point(c(10, 10)), crs = 4326))
+
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path))
+    DuckDBSpatial::writeGeoParquet(pts1, path)
+    DuckDBSpatial::writeGeoParquet(pts2, path, append = TRUE)
+
+    df <- nanoparquet::read_parquet(path)
+    expect_equal(nrow(df), 4L)
+    sfc_out <- st_as_sfc(structure(df$geometry, class = "WKB"))
+    expect_equal(as.character(st_geometry_type(sfc_out)), c("POINT", "POINT", "LINESTRING", "POINT"))
+
+    kvm <- nanoparquet::read_parquet_metadata(path)$file_meta_data$key_value_metadata[[1]]
+    geo <- jsonlite::fromJSON(kvm$value[kvm$key == "geo"], simplifyVector = FALSE)
+    cs <- geo$columns$geometry
+    expect_setequal(unlist(cs$geometry_types), c("Point", "LineString"))
+    expect_equal(unlist(cs$bbox), c(0, 0, 10, 10))
+    expect_identical(cs$crs$id$code, 4326L)
+})
+
+test_that("writeGeoParquet append = TRUE requires an existing GeoParquet file", {
+    skip_if_not_installed("nanoparquet")
+    library(sf)
+
+    pts <- st_sf(id = 1L, geometry = st_sfc(st_point(0:1)))
+    path <- tempfile(fileext = ".parquet")
+    expect_false(file.exists(path))
+    expect_error(
+        DuckDBSpatial::writeGeoParquet(pts, path, append = TRUE),
+        "'append = TRUE' but .* does not exist"
+    )
+})
+
+test_that("writeGeoParquet append = TRUE rejects a mismatched CRS", {
+    skip_if_not_installed("nanoparquet")
+    skip_if_not_installed("blob")
+    library(sf)
+
+    pts1 <- st_sf(id = 1L, geometry = st_sfc(st_point(0:1), crs = 4326))
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path))
+    DuckDBSpatial::writeGeoParquet(pts1, path)
+
+    pts2 <- st_sf(id = 2L, geometry = st_sfc(st_point(1:2), crs = 3857))
+    expect_error(
+        DuckDBSpatial::writeGeoParquet(pts2, path, append = TRUE),
+        "CRS of 'x' does not match"
+    )
+})
+
 test_that("writeGeoParquet with DataFrame and WKB column errors without sfc", {
     skip_if_not_installed("nanoparquet")
     ## DataFrame with list of raw but no way to infer types - should error

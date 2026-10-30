@@ -59,7 +59,57 @@
     meta <- list(version = "1.0.0",
                  primary_column = geom,
                  columns = structure(list(col_spec), names = geom))
-    jsonlite::toJSON(meta, auto_unbox = TRUE)
+    # digits = NA: jsonlite::toJSON() defaults to 4 significant digits, which
+    # silently truncates the embedded CRS's ellipsoid parameters (e.g. WGS84's
+    # inverse_flattening 298.257223563 -> 298.2572) and bbox coordinates.
+    jsonlite::toJSON(meta, auto_unbox = TRUE, digits = NA)
+}
+
+#' @importFrom sf st_crs
+.mergeGeoParquetMetadata <- function(path, geom, sfc) {
+    kv <- nanoparquet::read_parquet_metadata(path)$file_meta_data$key_value_metadata[[1L]]
+    old_geo <- kv$value[kv$key == "geo"]
+    if (length(old_geo) == 0L)
+        stop("'", path, "' has no GeoParquet 'geo' metadata; write it first ",
+             "with 'append = FALSE'")
+    old_meta <- jsonlite::fromJSON(old_geo, simplifyVector = FALSE)
+    if (!identical(old_meta[["primary_column"]], geom))
+        stop("'geom' ('", geom, "') does not match the existing file's ",
+             "primary geometry column ('", old_meta[["primary_column"]], "')")
+    old_spec <- old_meta[["columns"]][[geom]]
+    if (is.null(old_spec))
+        stop("'", path, "' has no GeoParquet metadata for column '", geom, "'")
+
+    old_crs <- if (is.null(old_spec[["crs"]])) {
+        st_crs("OGC:CRS84")
+    } else {
+        st_crs(as.character(jsonlite::toJSON(old_spec[["crs"]], auto_unbox = TRUE,
+                                             digits = NA)))
+    }
+    new_crs <- st_crs(sfc)
+    if (!is.na(new_crs) && (old_crs != new_crs))
+        stop("CRS of 'x' does not match the existing file's CRS; ",
+             "reproject 'x' to match before appending")
+
+    old_types <- unlist(old_spec[["geometry_types"]])
+    new_types <- .geometryTypeToGeoParquet(as.character(st_geometry_type(sfc)))
+    old_spec[["geometry_types"]] <- as.list(unique(c(old_types, new_types)))
+
+    old_bbox <- old_spec[["bbox"]]
+    new_bbox <- as.numeric(st_bbox(sfc))
+    if (!is.null(old_bbox) && all(is.finite(new_bbox))) {
+        old_bbox <- as.numeric(unlist(old_bbox))
+        old_spec[["bbox"]] <- as.list(c(pmin(old_bbox[1:2], new_bbox[1:2]),
+                                         pmax(old_bbox[3:4], new_bbox[3:4])))
+    } else {
+        # Unknown old extent (never recorded) or non-finite new extent: can't
+        # reconstruct a true combined bbox, so omit it rather than report one
+        # that silently excludes rows (bbox is optional in the spec).
+        old_spec[["bbox"]] <- NULL
+    }
+
+    old_meta[["columns"]][[geom]] <- old_spec
+    jsonlite::toJSON(old_meta, auto_unbox = TRUE, digits = NA)
 }
 
 #' Write spatial data as GeoParquet
@@ -83,6 +133,17 @@
 #'   \code{"gzip"}, \code{"brotli"}, or \code{"uncompressed"}.
 #' @param options Optional list of parquet options created by
 #'   \code{nanoparquet::parquet_options()}. Defaults to compression level 3.
+#' @param append Logical; if \code{TRUE}, append \code{x} as new row groups
+#'   to an existing GeoParquet file at \code{path} via
+#'   \code{\link[nanoparquet]{append_parquet}}, instead of overwriting it.
+#'   \code{path} must already exist and carry GeoParquet metadata (i.e. have
+#'   been written by \code{writeGeoParquet()}, possibly in an earlier
+#'   \code{append = TRUE} call); the \code{geo} metadata (geometry types,
+#'   bounding box, CRS) is then updated in place to cover the combined file.
+#'   The CRS of \code{x} must match the existing file's CRS; appending to a
+#'   multi-part/hive-partitioned layout is not supported. Like
+#'   \code{append_parquet()} itself, this is \strong{not atomic}: an
+#'   interrupted append can leave \code{path} corrupt.
 #' @param ... Additional arguments (currently unused).
 #'
 #' @return Invisibly returns \code{NULL}. Called for its side effect of writing
@@ -127,6 +188,11 @@
 #'     pts_path <- tempfile(fileext = ".parquet")
 #'     writeGeoParquet(pts, pts_path, geom = "geom")
 #'
+#'     # Append more features to an existing GeoParquet file
+#'     more_pts <- st_sf(id = 4:5, geom = st_sfc(st_point(c(3, 3)),
+#'                                                st_point(c(4, 4))))
+#'     writeGeoParquet(more_pts, pts_path, geom = "geom", append = TRUE)
+#'
 #'     # Read back in DuckDB
 #'     ddb <- DuckDBDataFrame::DuckDBDataFrame(nc_path)
 #'     ddb$geometry  # Native GEOMETRY column
@@ -143,14 +209,21 @@
 #' }
 #'
 #' @export
+#' @importFrom S4Vectors isTRUEorFALSE
 #' @importFrom sf st_as_binary st_as_sfc st_geometry
 writeGeoParquet <-
 function(x, path, geom = "geometry", compression = "zstd",
-         options = nanoparquet::parquet_options(compression_level = 3L), ...)
+         options = nanoparquet::parquet_options(compression_level = 3L),
+         append = FALSE, ...)
 {
     if (!requireNamespace("nanoparquet", quietly = TRUE))
         stop("package 'nanoparquet' is required for writeGeoParquet(); ",
              "install with install.packages('nanoparquet')")
+    if (!isTRUEorFALSE(append))
+        stop("'append' must be TRUE or FALSE")
+    if (isTRUE(append) && !file.exists(path))
+        stop("'append = TRUE' but '", path, "' does not exist; ",
+             "write it first with 'append = FALSE'")
 
     if (inherits(x, "sf")) {
         df <- as.data.frame(x, optional = TRUE)
@@ -179,9 +252,20 @@ function(x, path, geom = "geometry", compression = "zstd",
         }
     }
 
-    meta <- .buildGeoParquetMetadata(geom, sfc)
-    nanoparquet::write_parquet(df, file = path, metadata = c(geo = meta),
-                               compression = compression, options = options, ...)
+    if (isTRUE(append)) {
+        if (!requireNamespace("blob", quietly = TRUE))
+            stop("package 'blob' is required for 'writeGeoParquet(..., ",
+                 "append = TRUE)'; install with install.packages('blob')")
+        meta <- .mergeGeoParquetMetadata(path, geom, sfc)
+        df[[geom]] <- blob::as_blob(unclass(df[[geom]]))
+        nanoparquet::append_parquet(df, file = path, compression = compression,
+                                    options = options, ...)
+        nanoparquet::edit_parquet_metadata(path, c(geo = meta))
+    } else {
+        meta <- .buildGeoParquetMetadata(geom, sfc)
+        nanoparquet::write_parquet(df, file = path, metadata = c(geo = meta),
+                                   compression = compression, options = options, ...)
+    }
 
     invisible(NULL)
 }

@@ -10,6 +10,7 @@ writeGeoParquet(
   geom = "geometry",
   compression = "zstd",
   options = nanoparquet::parquet_options(compression_level = 3L),
+  append = FALSE,
   ...
 )
 }
@@ -30,6 +31,18 @@ Defaults to \code{"zstd"}. Other options include \code{"snappy"},
 
 \item{options}{Optional list of parquet options created by
 \code{nanoparquet::parquet_options()}. Defaults to compression level 3.}
+
+\item{append}{Logical; if \code{TRUE}, append \code{x} as new row groups
+to an existing GeoParquet file at \code{path} via
+\code{\link[nanoparquet]{append_parquet}}, instead of overwriting it.
+\code{path} must already exist and carry GeoParquet metadata (i.e. have
+been written by \code{writeGeoParquet()}, possibly in an earlier
+\code{append = TRUE} call); the \code{geo} metadata (geometry types,
+bounding box, CRS) is then updated in place to cover the combined file.
+The CRS of \code{x} must match the existing file's CRS; appending to a
+multi-part/hive-partitioned layout is not supported. Like
+\code{append_parquet()} itself, this is \strong{not atomic}: an
+interrupted append can leave \code{path} corrupt.}
 
 \item{...}{Additional arguments (currently unused).}
 }
@@ -82,6 +95,11 @@ if (requireNamespace("nanoparquet", quietly = TRUE)) {
                                          st_point(c(2, 2))))
     pts_path <- tempfile(fileext = ".parquet")
     writeGeoParquet(pts, pts_path, geom = "geom")
+
+    # Append more features to an existing GeoParquet file
+    more_pts <- st_sf(id = 4:5, geom = st_sfc(st_point(c(3, 3)),
+                                               st_point(c(4, 4))))
+    writeGeoParquet(more_pts, pts_path, geom = "geom", append = TRUE)
 
     # Read back in DuckDB
     ddb <- DuckDBDataFrame::DuckDBDataFrame(nc_path)

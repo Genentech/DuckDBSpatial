@@ -1,3 +1,42 @@
+# DuckDBSpatial 0.99.12
+
+## New features
+
+- `writeGeoParquet(x, path, ..., append = TRUE)`: requested by a user who
+  wanted to add rows to an existing GeoParquet file incrementally rather
+  than rewriting it each time. Appends \code{x} as new row groups via
+  `nanoparquet::append_parquet()`, then updates the file's `geo` metadata
+  in place: `geometry_types` is the union of the existing and new types,
+  `bbox` is extended to cover both (omitted if either extent is unknown,
+  rather than reporting a bbox that silently excludes rows), and the CRS
+  is left as-is, but checked: `x` must have a matching CRS, or the append
+  errors rather than embedding mismatched coordinates under one CRS
+  label. `append = TRUE` requires `path` to already exist with GeoParquet
+  metadata (write it first with `append = FALSE`); appending to a
+  multi-part/hive-partitioned layout isn't supported. Requires the `blob`
+  package (now in `Suggests`): `append_parquet()` reads the existing
+  file's WKB column back as a `blob::blob()` vector internally to
+  validate the combined schema, so the new data's geometry column has to
+  match that representation (an `AsIs` list of raw vectors, fine for a
+  fresh `write_parquet()` call, doesn't vctrs-cast to `blob` and errors).
+
+## Bug fixes
+
+- `.buildGeoParquetMetadata()`'s `jsonlite::toJSON(meta, auto_unbox = TRUE)`
+  call used jsonlite's default `digits = 4`, silently truncating numeric
+  precision anywhere in the embedded metadata, including the CRS's own
+  ellipsoid parameters (e.g. WGS84's `inverse_flattening`
+  298.257223563 truncated to 298.2572) every time `writeGeoParquet()` wrote
+  a CRS. Found while adding the `append = TRUE` CRS-matching check above:
+  comparing the file's recorded CRS against a fresh `sf::st_crs()` via
+  `sf::st_crs() ==` failed even for the identical CRS, because `st_crs()`
+  couldn't recognize the truncated ellipsoid as standard WGS84. Fixed with
+  `digits = NA` (full precision) everywhere this package serializes GeoJSON
+  metadata back out. Also fixed: `sf::st_crs()` silently returns an `NA`
+  CRS, with no warning or error, when given `jsonlite::toJSON()`'s
+  `"json"`-classed return value directly instead of a plain character
+  string; coerce with `as.character()` first.
+
 # DuckDBSpatial 0.99.11
 
 ## Bug fixes
