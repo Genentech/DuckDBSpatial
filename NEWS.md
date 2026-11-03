@@ -1,3 +1,65 @@
+# DuckDBSpatial 0.99.13
+
+## Significant changes
+
+- `st_as_sfc()` for `DuckDBTable`/`DuckDBDataFrame`/`DuckDBColumn` now
+  materializes into an in-memory `sfc`, instead of staying lazy (building
+  `ST_GeomFromText`/`ST_GeomFromWKB`/`ST_GeomFromGeoJSON` SQL and returning
+  another lazy `DuckDBTable`). This is a deliberate breaking change (the
+  package is still pre-1.0/devel): in plain `sf`, `st_as_sfc()` and
+  `st_as_sf()` are both always materializing, with no lazy variant at all;
+  `DuckDBSpatial` had reinterpreted `st_as_sfc()`'s laziness while adding
+  `st_as_sf()` (below) as materializing from the start, so the two sibling
+  generics disagreed on the one axis they otherwise never differ on. That
+  mismatch is the direct, confirmed root cause of two separate pieces of
+  user confusion in a row (`st_as_sfc()` not materializing, then
+  `st_collect()` combining every row instead): nothing in the package
+  internally relied on `st_as_sfc()`'s laziness either (every real call
+  site collects first, then calls plain `sf::st_as_sfc()` on the in-memory
+  result). The rule is now simple and matches upstream `sf` exactly: every
+  `st_as_*` generic in this package returns a real in-memory object, no
+  exceptions, honoring the same contract plain `sf` does: an explicit,
+  non-`NA` `crs=` overrides whatever CRS is already embedded (rather than
+  being silently ignored on an already-`GEOMETRY`-typed column, as an
+  earlier draft of this change did), `...` reaches `sf::st_as_sfc()`'s own
+  parsers, and a missing/`NULL` cell (SQL `NULL`, GeoParquet explicitly
+  permits these) becomes an empty geometry instead of erroring, for WKB,
+  WKT, and GeoJSON alike. A column already `GEOMETRY`-typed is collected
+  and tagged with its own `st_crs()`, without needlessly collecting and
+  parsing any other `GEOMETRY`-typed column in the same table; a
+  WKT/GeoJSON/WKB column not yet `GEOMETRY`-typed is collected as-is and
+  handed to plain `sf::st_as_sfc()`'s own parsers, rather than building a
+  SQL cast just to immediately materialize the result anyway. The
+  still-lazy, SQL-side parse (for chaining further lazy spatial ops at
+  out-of-core scale without ever collecting) remains available, just
+  honestly named: `sql_call(x, "ST_GeomFromText")` (or `"ST_GeomFromWKB"`/
+  `"ST_GeomFromGeoJSON"`).
+
+## New features
+
+- `st_as_sf(x, ..., geom = "geometry")`: materializes a `DuckDBTable`/
+  `DuckDBDataFrame` into an in-memory `sf` object, one feature per row.
+  Reported by a user who expected `st_as_sfc()` to do this (at the time, it
+  stayed lazy; see "Significant changes" above, where that's now fixed
+  too), then tried `st_collect()` instead and found it combined all rows
+  into a single `MULTIPOINT`. That's actually
+  correct for `st_collect()`: it wraps DuckDB's own `ST_Collect` SQL
+  aggregate, a different operation entirely, just one whose name collides
+  with the natural "collect a lazy object into memory" expectation. Neither
+  function materializes; nothing in the package did. The fix: the `duckdb`
+  R driver already returns a native `GEOMETRY` column as a list of raw WKB
+  on collection (verified empirically, no `ST_AsWKB` cast needed first), so
+  `st_as_sf()` collects `x` directly, parses every `GEOMETRY`-typed column
+  (not just `geom`, so a second geometry column doesn't survive as inert
+  raw bytes) via `sf::st_as_sfc()`, substitutes the real empty-geometry WKB
+  encoding for any SQL-`NULL` cell (`st_as_sfc()` otherwise errors on a bare
+  `NULL` list element), and tags each with its own CRS.
+- `st_crs(x, geom = "geometry")` for `DuckDBTable`/`DuckDBDataFrame`, and
+  `st_crs(x)` for `DuckDBColumn`: reads a lazy geometry column's CRS via
+  DuckDB's own `ST_CRS` SQL function, without collecting. Added because
+  `st_as_sf()` needs it, and because `DuckDBSpatial` had no way at all to
+  query a lazy object's CRS before this.
+
 # DuckDBSpatial 0.99.12
 
 ## New features

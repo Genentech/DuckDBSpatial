@@ -9,9 +9,15 @@ test_that("Spatial coercion methods work as expected for a DuckDBColumn", {
     type <- df[["type"]]
     sfc <- st_as_sfc(spatial_wkt[!is.na(spatial_wkt)])
 
+    # st_as_sfc() materializes (matching plain sf's own semantics): a round
+    # trip through the still-lazy st_as_text() and back reproduces the
+    # original geometry as a real in-memory sfc, not another DuckDBColumn.
     wkt <- st_as_text(x)
-    checkDuckDBColumn(st_as_text(st_as_sfc(wkt)), st_as_text(sfc))
-    checkDuckDBColumn(st_as_binary(st_as_sfc(wkt), hex = TRUE), st_as_binary(sfc, hex = TRUE))
+    roundtrip <- st_as_sfc(wkt)
+    expect_s3_class(roundtrip, "sfc")
+    expect_equal(st_as_text(roundtrip), st_as_text(sfc))
+    expect_equal(st_as_binary(roundtrip, hex = TRUE), st_as_binary(sfc, hex = TRUE))
+
     checkDuckDBColumn(st_as_binary(x, hex = TRUE), st_as_binary(sfc, hex = TRUE))
     checkDuckDBColumn(st_as_text(x), st_as_text(sfc))
 })
@@ -524,21 +530,184 @@ test_that("readGeoParquet warns when the file has no geometry column", {
     expect_no_warning(readGeoParquet(spatial_path))
 })
 
-test_that("st_as_sfc is a no-op on a column already stored as GEOMETRY", {
+test_that("st_as_sfc materializes a column already stored as GEOMETRY", {
     skip_if_not_installed("nanoparquet")
     pts <- st_sfc(st_point(0:1), st_point(2:3), crs = 4326)
     path <- tempfile(fileext = ".parquet")
     on.exit(unlink(path), add = TRUE)
     writeGeoParquet(pts, path)
 
-    # readGeoParquet() reads the geometry column back as native GEOMETRY, so
-    # applying ST_GeomFromText() to it (as st_as_sfc() does for a VARCHAR/WKT
-    # column) is a type mismatch at the DuckDB binder, not just a no-op --
-    # it must be detected and skipped.
+    # st_as_sfc()/st_as_sf() always materialize in plain sf itself, so the
+    # DuckDBTable methods must too -- not build ST_GeomFromText() SQL (which
+    # expects VARCHAR/BLOB input and errors with a binder mismatch on an
+    # already-GEOMETRY column) and not stay lazy either.
     ddb <- readGeoParquet(path)
     expect_identical(unname(coltypes(ddb)), "geometry")
     result <- expect_silent(st_as_sfc(ddb))
-    expect_s4_class(result, "DuckDBDataFrame")
-    expect_identical(unname(coltypes(result)), "geometry")
-    expect_equal(st_as_text(result), st_as_text(ddb))
+    expect_s3_class(result, "sfc")
+    expect_equal(st_as_text(result), st_as_text(pts))
+    expect_true(st_crs(result) == st_crs(4326))
+
+    expect_identical(st_as_sfc(ddb[["geometry"]]), result)
+})
+
+test_that("st_as_sfc materializes WKT/WKB/GeoJSON columns not yet GEOMETRY-typed", {
+    skip_if_not_installed("arrow")
+    wkt_path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(wkt_path), add = TRUE)
+    arrow::write_parquet(data.frame(geometry = c("POINT (0 0)", "POINT (1 1)")), wkt_path)
+    wkt_ddb <- DuckDBDataFrame(wkt_path)
+    expect_false(hasGeometry(wkt_ddb))
+    result <- st_as_sfc(wkt_ddb)
+    expect_s3_class(result, "sfc")
+    expect_equal(st_as_text(result), c("POINT (0 0)", "POINT (1 1)"))
+
+    skip_if_not_installed("nanoparquet")
+    pts <- st_sfc(st_point(0:1), st_point(2:3))
+    wkb_path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(wkb_path), add = TRUE)
+    nanoparquet::write_parquet(data.frame(geometry = I(lapply(pts, st_as_binary))), wkb_path)
+    wkb_ddb <- DuckDBDataFrame(wkb_path)
+    result_wkb <- st_as_sfc(wkb_ddb, WKB = TRUE)
+    expect_s3_class(result_wkb, "sfc")
+    expect_equal(st_as_text(result_wkb), st_as_text(pts))
+
+    gj_path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(gj_path), add = TRUE)
+    arrow::write_parquet(data.frame(geometry = c(
+        '{"type":"Point","coordinates":[0,1]}',
+        '{"type":"Point","coordinates":[2,3]}')), gj_path)
+    gj_ddb <- DuckDBDataFrame(gj_path)
+    result_gj <- st_as_sfc(gj_ddb, GeoJSON = TRUE)
+    expect_s3_class(result_gj, "sfc")
+    expect_equal(st_as_text(result_gj), st_as_text(pts))
+
+    expect_error(st_as_sfc(wkt_ddb, geom = "nonexistent"), "not a column")
+})
+
+test_that("st_as_sfc substitutes empty geometry for NA cells in WKT/GeoJSON columns", {
+    skip_if_not_installed("arrow")
+    # sf::st_as_sfc() errors outright on a bare NA ("missing value where
+    # TRUE/FALSE needed") for both WKT and GeoJSON text, unlike the WKB path
+    # (covered separately via st_as_sf()'s own NULL-cell test).
+    wkt_path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(wkt_path), add = TRUE)
+    arrow::write_parquet(data.frame(geometry = c("POINT (0 0)", NA, "POINT (1 1)")), wkt_path)
+    wkt_ddb <- DuckDBDataFrame(wkt_path)
+    result <- st_as_sfc(wkt_ddb)
+    expect_identical(st_is_empty(result), c(FALSE, TRUE, FALSE))
+    expect_equal(st_as_text(result[c(1L, 3L)]), c("POINT (0 0)", "POINT (1 1)"))
+
+    gj_path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(gj_path), add = TRUE)
+    arrow::write_parquet(data.frame(geometry = c(
+        '{"type":"Point","coordinates":[0,1]}', NA,
+        '{"type":"Point","coordinates":[2,3]}')), gj_path)
+    gj_ddb <- DuckDBDataFrame(gj_path)
+    result_gj <- st_as_sfc(gj_ddb, GeoJSON = TRUE)
+    expect_identical(st_is_empty(result_gj), c(FALSE, TRUE, FALSE))
+})
+
+test_that("st_as_sfc lets an explicit crs override an already-GEOMETRY column's CRS", {
+    skip_if_not_installed("nanoparquet")
+    pts <- st_sfc(st_point(0:1), st_point(2:3), crs = 4326)
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path), add = TRUE)
+    writeGeoParquet(pts, path)
+    ddb <- readGeoParquet(path)
+
+    expect_true(st_crs(st_as_sfc(ddb)) == st_crs(4326))
+    expect_true(st_crs(st_as_sfc(ddb, crs = 3857)) == st_crs(3857))
+})
+
+test_that("st_as_sf materializes one feature per row, not a combined geometry", {
+    skip_if_not_installed("nanoparquet")
+    pts <- st_sf(id = 1:5, geometry = st_sample(
+        st_bbox(c(xmin = 0, xmax = 1, ymin = 0, ymax = 1)), 5), crs = 4326)
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path), add = TRUE)
+    writeGeoParquet(pts, path)
+    ddb <- readGeoParquet(path)
+
+    # st_collect() legitimately combines every row into ONE geometry (it
+    # wraps DuckDB's own ST_Collect aggregate); st_as_sf() must not do that.
+    sfobj <- st_as_sf(ddb)
+    expect_s3_class(sfobj, "sf")
+    expect_equal(nrow(sfobj), 5L)
+    expect_true(all(as.character(st_geometry_type(sfobj)) == "POINT"))
+    expect_identical(st_as_text(sfobj$geometry), st_as_text(pts$geometry))
+    expect_identical(sfobj$id, pts$id)
+    expect_true(st_crs(sfobj) == st_crs(4326))
+
+    # No explicit CRS at write time still round-trips to a (spec-default)
+    # CRS, not NA, and the geometry itself is unaffected either way.
+    pts_nocrs <- st_sf(geometry = st_sample(
+        st_bbox(c(xmin = 0, xmax = 1, ymin = 0, ymax = 1)), 3))
+    path2 <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path2), add = TRUE)
+    writeGeoParquet(pts_nocrs, path2)
+    ddb2 <- readGeoParquet(path2)
+    sfobj2 <- st_as_sf(ddb2)
+    expect_false(is.na(st_crs(sfobj2)))
+    expect_identical(st_as_text(sfobj2$geometry), st_as_text(pts_nocrs$geometry))
+
+    expect_error(st_as_sf(DuckDBDataFrame(path)[, "id", drop = FALSE]),
+                 "not a GEOMETRY column")
+})
+
+test_that("st_crs reads a lazy DuckDBTable/DuckDBColumn's CRS without collecting", {
+    skip_if_not_installed("nanoparquet")
+    pts <- st_sf(geometry = st_sfc(st_point(0:1), st_point(2:3), crs = 4326))
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path), add = TRUE)
+    writeGeoParquet(pts, path)
+    ddb <- readGeoParquet(path)
+
+    expect_true(st_crs(ddb) == st_crs(4326))
+    expect_true(st_crs(ddb[["geometry"]]) == st_crs(4326))
+    expect_error(st_crs(ddb, geom = "nonexistent"), "not a GEOMETRY column")
+})
+
+test_that("st_as_sf substitutes empty geometry for SQL NULL geometry cells", {
+    conn <- DuckDBDataFrame::acquireDuckDBConn()
+    ddb <- DuckDBDataFrame(dplyr::tbl(conn, dplyr::sql(
+        "SELECT * FROM (VALUES (1, NULL::GEOMETRY), (2, ST_Point(1, 1)),
+                                (3, NULL::GEOMETRY), (4, ST_Point(2, 2)))
+         v(id, geometry)")))
+
+    # as.data.frame() materializes a SQL-NULL geometry cell as a bare NULL
+    # list element, which st_as_sfc.WKB() otherwise rejects outright.
+    sfobj <- st_as_sf(ddb)
+    expect_equal(nrow(sfobj), 4L)
+    expect_identical(sfobj$id, 1:4)
+    expect_identical(st_is_empty(sfobj$geometry), c(TRUE, FALSE, TRUE, FALSE))
+    expect_equal(st_as_text(sfobj$geometry[[2L]]), "POINT (1 1)")
+    expect_equal(st_as_text(sfobj$geometry[[4L]]), "POINT (2 2)")
+})
+
+test_that("st_as_sf converts every GEOMETRY-typed column, not just 'geom'", {
+    conn <- DuckDBDataFrame::acquireDuckDBConn()
+    ddb <- DuckDBDataFrame(dplyr::tbl(conn, dplyr::sql(
+        "SELECT ST_Point(x, y) AS geometry,
+                ST_Buffer(ST_Point(x, y), 1.0) AS buffer
+         FROM (VALUES (0, 0), (1, 1)) v(x, y)")))
+
+    sfobj <- st_as_sf(ddb)
+    expect_identical(attr(sfobj, "sf_column"), "geometry")
+    # The non-active geometry column must not survive as inert raw WKB
+    # (previously true: sf::st_write() would silently write opaque bytes).
+    expect_s3_class(sfobj$buffer, "sfc_POLYGON")
+    expect_true(all(as.character(st_geometry_type(sfobj$buffer)) == "POLYGON"))
+})
+
+test_that("st_as_sf forwards ... to sf::st_as_sf", {
+    skip_if_not_installed("nanoparquet")
+    pts <- st_sf(id = 1:2, geometry = st_sfc(st_point(0:1), st_point(2:3)), crs = 4326)
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path), add = TRUE)
+    writeGeoParquet(pts, path)
+    ddb <- readGeoParquet(path)
+
+    sfobj <- st_as_sf(ddb, agr = "constant")
+    expect_identical(unname(as.character(st_agr(sfobj)["id"])), "constant")
 })

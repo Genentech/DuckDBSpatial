@@ -3,17 +3,10 @@
 #' @description
 #' Spatial operations on DuckDBTable objects.
 #'
-#' @section Geometry Creation:
-#' In the code snippets below, \code{x} is a DuckDBTable object.
-#' \describe{
-#'   \item{\code{st_as_sfc(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE)}:}{
-#'     Parses WKT (default), GeoJSON, or WKB into GEOMETRY via
-#'     \code{ST_GeomFromText}, \code{ST_GeomFromGeoJSON}, or
-#'     \code{ST_GeomFromWKB}.
-#'   }
-#' }
-#'
 #' @section Geometry Coercion:
+#' In the code snippets below, \code{x} is a DuckDBTable object. These stay
+#' lazy (they build SQL and return another \code{DuckDBTable}); see
+#' \emph{Materialization} below for the in-memory counterparts.
 #' \describe{
 #'   \item{\code{st_as_binary(x, hex = FALSE)}:}{
 #'     Converts to WKB (\code{ST_AsWKB}) or hex-encoded WKB
@@ -34,6 +27,44 @@
 #'     below applies its SQL predicate to every column of \code{x}, and
 #'     only errors once the query is materialized, not when it's built;
 #'     use this to check first rather than find out later.
+#'   }
+#' }
+#'
+#' @section Materialization:
+#' Unlike \emph{Coercion} above, which stays lazy (it builds SQL and returns
+#' another \code{DuckDBTable}), these bring \code{x} into memory as native
+#' \pkg{sf} objects -- matching how \code{st_as_sfc()}/\code{st_as_sf()}
+#' always behave in plain \pkg{sf} itself (there is no lazy variant there).
+#' A SQL-side, still-lazy parse of a WKT/WKB/GeoJSON column into native
+#' \code{GEOMETRY} (for chaining further lazy spatial ops at out-of-core
+#' scale, without ever collecting) is still available, just not under a
+#' hijacked \pkg{sf} generic name: \code{sql_call(x, "ST_GeomFromText")} (or
+#' \code{"ST_GeomFromWKB"}/\code{"ST_GeomFromGeoJSON"}).
+#' \describe{
+#'   \item{\code{st_crs(x, geom = "geometry")}:}{
+#'     The CRS of column \code{geom}, via \code{ST_CRS}.
+#'   }
+#'   \item{\code{st_as_sfc(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE, geom = "geometry")}:}{
+#'     Collects column \code{geom} into an in-memory \code{\link[sf]{sfc}},
+#'     tagged with its \code{st_crs()} unless overridden by an explicit,
+#'     non-\code{NA} \code{crs}. If \code{geom} is already
+#'     \code{GEOMETRY}-typed, it's parsed from its raw WKB directly;
+#'     otherwise it's collected as-is (WKT text, GeoJSON text, or a list of
+#'     raw WKB, per \code{WKB}/\code{GeoJSON}) and handed to plain
+#'     \code{\link[sf]{st_as_sfc}}'s own parsers. Either way, a missing/
+#'     \code{NULL} cell becomes an empty geometry rather than erroring, and
+#'     \code{...} reaches \code{st_as_sfc()}'s own parsers.
+#'   }
+#'   \item{\code{st_as_sf(x, ..., geom = "geometry")}:}{
+#'     Collects \code{x} into an in-memory \code{\link[sf]{sf}} object,
+#'     with \code{geom} as its active geometry column. Every
+#'     \code{GEOMETRY}-typed column (not just \code{geom}) is parsed via
+#'     \code{\link[sf]{st_as_sfc}} from its raw WKB and tagged with its own
+#'     \code{st_crs(x, geom = <column>)}, so a second geometry column (e.g.
+#'     a buffer alongside a point) doesn't survive as inert raw bytes.
+#'     \code{...} is passed on to \code{\link[sf]{st_as_sf}}. Unlike
+#'     \code{st_collect(x)} below, which combines every row's geometry into
+#'     one, this keeps one feature per row.
 #'   }
 #' }
 #'
@@ -312,6 +343,10 @@
 #'
 #' @aliases hasGeometry
 #'
+#' @aliases st_crs.DuckDBTable
+#' @aliases st_crs.DuckDBColumn
+#' @aliases st_as_sf.DuckDBTable
+#'
 #' @aliases st_as_binary.DuckDBTable
 #' @aliases st_as_text.DuckDBTable
 #'
@@ -525,31 +560,6 @@ st_make_envelope_sql <- function(xmin, ymin, xmax, ymax) {
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Creation methods
-###
-
-#' @exportS3Method sf::st_as_sfc
-#' @importFrom DuckDBDataFrame coltypes
-#' @importFrom sf st_as_sfc
-st_as_sfc.DuckDBTable <-
-function(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE) {
-    fun <- if (isTRUE(WKB)) "ST_GeomFromWKB" else if (isTRUE(GeoJSON))
-        "ST_GeomFromGeoJSON" else "ST_GeomFromText"
-    # Columns already stored as native GEOMETRY (e.g. after readGeoParquet())
-    # are left as-is: ST_GeomFromText/WKB/GeoJSON all expect VARCHAR/BLOB
-    # input and error with a binder mismatch ("No function matches ...
-    # ST_GeomFromText(GEOMETRY)") when applied to an already-geometry column.
-    types <- coltypes(x)
-    datacols <- x@datacols
-    for (col in names(datacols)) {
-        if (!identical(types[[col]], "geometry"))
-            datacols[[col]] <- do.call("call", list(fun, datacols[[col]], ...),
-                                        quote = TRUE)
-    }
-    replaceSlots(x, datacols = datacols, check = FALSE)
-}
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Coercion methods
 ###
 
@@ -580,6 +590,112 @@ hasGeometry <- function(x, geom = "geometry") {
         stop("'x' must be a DuckDBTable or DuckDBDataFrame")
     types <- coltypes(x)
     geom %in% names(types) && isTRUE(unname(types[[geom]]) == "geometry")
+}
+
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### Materialization methods
+###
+
+#' @exportS3Method sf::st_crs
+#' @importFrom dplyr summarize
+#' @importFrom sf st_crs
+st_crs.DuckDBTable <- function(x, ..., geom = "geometry") {
+    if (!hasGeometry(x, geom))
+        stop("'", geom, "' is not a GEOMETRY column of 'x'")
+    # Splice x@datacols[[geom]]'s own expression (not as.name(geom)) so a
+    # renamed/derived geometry column still resolves correctly against the
+    # raw, pre-select/mutate conn that tblconn(select = FALSE) returns.
+    # FIRST() picking an arbitrary row is safe here (no ORDER BY needed)
+    # because DuckDB's spatial extension carries CRS as a logical-type-level
+    # property of a GEOMETRY column, not a per-row value: it refuses to even
+    # construct a column mixing two differently CRS-tagged values, and
+    # ST_CRS() is constant-folded to a single literal at plan time.
+    aggr <- list(crs = call("FIRST", call("ST_CRS", x@datacols[[geom]])))
+    res <- as.data.frame(summarize(tblconn(x, select = FALSE), !!!aggr))
+    st_crs(res[["crs"]])
+}
+
+#' @exportS3Method sf::st_as_sfc
+#' @importFrom sf st_as_sfc st_crs<-
+st_as_sfc.DuckDBTable <-
+function(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE, geom = "geometry") {
+    if (!geom %in% names(x@datacols))
+        stop("'", geom, "' is not a column of 'x'")
+    # Collect just the one requested column either way: routing the already-
+    # GEOMETRY-typed case through st_as_sf() (which parses every GEOMETRY
+    # column in x, not just this one) wasted real work on unrelated columns
+    # (e.g. a buffer column alongside a point column) for a result that only
+    # ever keeps the one sfc asked for.
+    col <- as.data.frame(x[, geom, drop = FALSE], optional = TRUE)[[geom]]
+    if (hasGeometry(x, geom)) {
+        out <- .wkb_column_to_sfc(col, st_crs(x, geom = geom), ...)
+        # sf::st_as_sfc() lets an explicit, non-NA crs= override whatever CRS
+        # is already embedded in the input; match that instead of silently
+        # ignoring a caller-supplied crs on an already-GEOMETRY-typed column.
+        if (!is.na(crs))
+            st_crs(out) <- crs
+        return(out)
+    }
+    # Not yet GEOMETRY-typed (WKT/GeoJSON text, or a list of raw WKB): collect
+    # it as-is and hand off to plain sf's own parsers, rather than building a
+    # ST_GeomFromText/WKB/GeoJSON SQL cast just to immediately materialize
+    # the result anyway.
+    if (isTRUE(WKB)) {
+        .wkb_column_to_sfc(col, crs, ...)
+    } else {
+        .text_column_to_sfc(col, crs, isTRUE(GeoJSON), ...)
+    }
+}
+
+# A SQL-NULL geometry cell (GeoParquet explicitly permits these) materializes
+# via as.data.frame() as a bare NULL list element, not a zero-length raw
+# vector; st_as_sfc.WKB()'s vapply(x, is.raw, TRUE) check rejects a bare NULL,
+# and a zero-length raw vector errors too ("cannot read WKB object from
+# zero-length raw vector"). Substitute the real 9-byte GEOMETRYCOLLECTION
+# EMPTY WKB encoding, sf's own convention for a missing/empty geometry.
+#' @importFrom sf st_as_sfc
+.wkb_column_to_sfc <- function(col, crs, ...) {
+    empty <- as.raw(c(0x01, 0x07, 0, 0, 0, 0, 0, 0, 0))
+    col[vapply(col, is.null, NA)] <- list(empty)
+    st_as_sfc(structure(col, class = "WKB"), ..., crs = crs)
+}
+
+# Mirrors .wkb_column_to_sfc() above, but for WKT/GeoJSON text: a bare NA in
+# a character vector makes sf::st_as_sfc.character()/.list() error outright
+# ("missing value where TRUE/FALSE needed") rather than tolerate it the way
+# the WKB path's bare-NULL substitution does; substitute the text form of an
+# empty geometry instead.
+#' @importFrom sf st_as_sfc
+.text_column_to_sfc <- function(col, crs, GeoJSON, ...) {
+    empty <- if (isTRUE(GeoJSON))
+        '{"type":"GeometryCollection","geometries":[]}'
+    else
+        "GEOMETRYCOLLECTION EMPTY"
+    col[is.na(col)] <- empty
+    st_as_sfc(col, ..., crs = crs, GeoJSON = isTRUE(GeoJSON))
+}
+
+#' @exportS3Method sf::st_as_sf
+#' @importFrom DuckDBDataFrame coltypes
+#' @importFrom sf st_as_sf
+st_as_sf.DuckDBTable <- function(x, ..., geom = "geometry") {
+    if (!hasGeometry(x, geom))
+        stop("'", geom, "' is not a GEOMETRY column of 'x'")
+    # Convert every GEOMETRY-typed column, not just 'geom': a DuckDBTable
+    # routinely carries more than one (e.g. a point column and a buffer
+    # column), and leaving the others as raw WKB lists is a silent footgun
+    # downstream (e.g. sf::st_write() will happily write opaque raw bytes
+    # into them with no error).
+    types <- coltypes(x)
+    geomcols <- names(types)[types == "geometry"]
+    # The duckdb R driver already returns a native GEOMETRY column as a list
+    # of raw WKB on collection (confirmed empirically), so no ST_AsWKB cast
+    # is needed before materializing; st_as_sfc() recognizes it directly.
+    df <- as.data.frame(x, optional = TRUE)
+    for (gc in geomcols) {
+        df[[gc]] <- .wkb_column_to_sfc(df[[gc]], st_crs(x, geom = gc))
+    }
+    st_as_sf(df, ..., sf_column_name = geom)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

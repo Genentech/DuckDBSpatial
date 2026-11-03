@@ -3,15 +3,18 @@
 #' @description
 #' Spatial operations on DuckDBColumn objects.
 #'
-#' @section Geometry Creation:
+#' @section Materialization:
 #' In the code snippets below, \code{x} is a DuckDBColumn object.
 #' \describe{
 #'   \item{\code{st_as_sfc(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE)}:}{
-#'     Parses WKT, GeoJSON, or WKB into GEOMETRY.
+#'     Collects \code{x} into an in-memory \code{\link[sf]{sfc}}, parsing
+#'     WKT, GeoJSON, or WKB as needed -- matching plain \pkg{sf}'s own
+#'     \code{st_as_sfc()}, which is always materializing, never lazy.
 #'   }
 #' }
 #'
 #' @section Geometry Coercion:
+#' These stay lazy (they build SQL and return another \code{DuckDBColumn}).
 #' \describe{
 #'   \item{\code{st_as_binary(x, hex = FALSE)}:}{
 #'     Serialises to WKB or hex-encoded WKB.
@@ -239,6 +242,9 @@
 #'   \item{\code{st_union(x)} (no \code{y}):}{
 #'     Returns an \code{sfc} via \code{ST_Union_Agg}.
 #'   }
+#'   \item{\code{st_crs(x)}:}{
+#'     The CRS of \code{x}'s geometry, via \code{ST_CRS}.
+#'   }
 #' }
 #'
 #' @author Patrick Aboyoun
@@ -314,6 +320,7 @@
 #'
 #' @aliases st_bbox.DuckDBColumn
 #' @aliases st_collect.DuckDBColumn
+#' @aliases st_crs.DuckDBColumn
 #'
 #' @seealso
 #' \itemize{
@@ -340,16 +347,15 @@
 #' @name DuckDBColumn-spatial
 NULL
 
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Creation methods
-###
-
 #' @exportS3Method sf::st_as_sfc
 #' @importFrom sf st_as_sfc
 st_as_sfc.DuckDBColumn <-
 function(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE) {
-    replaceSlots(x, table = st_as_sfc(x@table, GeoJSON = GeoJSON, WKB = WKB),
-                 check = FALSE)
+    if ("geom" %in% ...names())
+        stop("'geom' is not a valid argument for a DuckDBColumn; it already ",
+             "has exactly one column")
+    st_as_sfc(x@table, ..., crs = crs, GeoJSON = GeoJSON, WKB = WKB,
+              geom = names(x@table@datacols)[1L])
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -780,6 +786,12 @@ st_bbox.DuckDBColumn <- function(obj, ...) {
           xmax = res$xmax, ymax = res$ymax),
         class = "bbox"
     )
+}
+
+#' @exportS3Method sf::st_crs
+#' @importFrom sf st_crs
+st_crs.DuckDBColumn <- function(x, ...) {
+    st_crs(x@table, geom = names(x@table@datacols)[1L])
 }
 
 #' @export

@@ -66,6 +66,7 @@
 \alias{st_union.DuckDBColumn}
 \alias{st_bbox.DuckDBColumn}
 \alias{st_collect.DuckDBColumn}
+\alias{st_crs.DuckDBColumn}
 \title{Spatial operations on DuckDBColumn objects}
 \value{
 Method return types are documented in the sections above.
@@ -73,18 +74,21 @@ Method return types are documented in the sections above.
 \description{
 Spatial operations on DuckDBColumn objects.
 }
-\section{Geometry Creation}{
+\section{Materialization}{
 
 In the code snippets below, \code{x} is a DuckDBColumn object.
 \describe{
   \item{\code{st_as_sfc(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE)}:}{
-    Parses WKT, GeoJSON, or WKB into GEOMETRY.
+    Collects \code{x} into an in-memory \code{\link[sf]{sfc}}, parsing
+    WKT, GeoJSON, or WKB as needed -- matching plain \pkg{sf}'s own
+    \code{st_as_sfc()}, which is always materializing, never lazy.
   }
 }
 }
 
 \section{Geometry Coercion}{
 
+These stay lazy (they build SQL and return another \code{DuckDBColumn}).
 \describe{
   \item{\code{st_as_binary(x, hex = FALSE)}:}{
     Serialises to WKB or hex-encoded WKB.
@@ -323,6 +327,9 @@ These methods materialise and return concrete R objects.
   }
   \item{\code{st_union(x)} (no \code{y}):}{
     Returns an \code{sfc} via \code{ST_Union_Agg}.
+  }
+  \item{\code{st_crs(x)}:}{
+    The CRS of \code{x}'s geometry, via \code{ST_CRS}.
   }
 }
 }

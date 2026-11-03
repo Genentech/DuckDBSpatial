@@ -7,6 +7,7 @@ S3method(sf::st_area,DuckDBColumn)
 S3method(sf::st_area,DuckDBTable)
 S3method(sf::st_as_binary,DuckDBColumn)
 S3method(sf::st_as_binary,DuckDBTable)
+S3method(sf::st_as_sf,DuckDBTable)
 S3method(sf::st_as_sfc,DuckDBColumn)
 S3method(sf::st_as_sfc,DuckDBTable)
 S3method(sf::st_as_text,DuckDBColumn)
@@ -25,6 +26,8 @@ S3method(sf::st_concave_hull,DuckDBTable)
 S3method(sf::st_convex_hull,DuckDBColumn)
 S3method(sf::st_convex_hull,DuckDBTable)
 S3method(sf::st_coordinates,DuckDBColumn)
+S3method(sf::st_crs,DuckDBColumn)
+S3method(sf::st_crs,DuckDBTable)
 S3method(sf::st_difference,DuckDBColumn)
 S3method(sf::st_difference,DuckDBTable)
 S3method(sf::st_exterior_ring,DuckDBColumn)
@@ -283,8 +286,10 @@ importFrom(dplyr,
   tbl
 )
 importFrom(sf,
+  "st_crs<-",
   st_area,
   st_as_binary,
+  st_as_sf,
   st_as_sfc,
   st_as_text,
   st_bbox,

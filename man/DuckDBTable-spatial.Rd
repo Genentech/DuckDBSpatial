@@ -4,6 +4,9 @@
 \alias{DuckDBTable-spatial}
 \alias{st_as_sfc.DuckDBTable}
 \alias{hasGeometry}
+\alias{st_crs.DuckDBTable}
+\alias{st_crs.DuckDBColumn}
+\alias{st_as_sf.DuckDBTable}
 \alias{st_as_binary.DuckDBTable}
 \alias{st_as_text.DuckDBTable}
 \alias{st_dimension}
@@ -195,20 +198,11 @@ Method return types are documented in the sections above.
 \description{
 Spatial operations on DuckDBTable objects.
 }
-\section{Geometry Creation}{
-
-In the code snippets below, \code{x} is a DuckDBTable object.
-\describe{
-  \item{\code{st_as_sfc(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE)}:}{
-    Parses WKT (default), GeoJSON, or WKB into GEOMETRY via
-    \code{ST_GeomFromText}, \code{ST_GeomFromGeoJSON}, or
-    \code{ST_GeomFromWKB}.
-  }
-}
-}
-
 \section{Geometry Coercion}{
 
+In the code snippets below, \code{x} is a DuckDBTable object. These stay
+lazy (they build SQL and return another \code{DuckDBTable}); see
+\emph{Materialization} below for the in-memory counterparts.
 \describe{
   \item{\code{st_as_binary(x, hex = FALSE)}:}{
     Converts to WKB (\code{ST_AsWKB}) or hex-encoded WKB
@@ -231,6 +225,46 @@ In the code snippets below, \code{x} is a DuckDBTable object.
     below applies its SQL predicate to every column of \code{x}, and
     only errors once the query is materialized, not when it's built;
     use this to check first rather than find out later.
+  }
+}
+}
+
+\section{Materialization}{
+
+Unlike \emph{Coercion} above, which stays lazy (it builds SQL and returns
+another \code{DuckDBTable}), these bring \code{x} into memory as native
+\pkg{sf} objects -- matching how \code{st_as_sfc()}/\code{st_as_sf()}
+always behave in plain \pkg{sf} itself (there is no lazy variant there).
+A SQL-side, still-lazy parse of a WKT/WKB/GeoJSON column into native
+\code{GEOMETRY} (for chaining further lazy spatial ops at out-of-core
+scale, without ever collecting) is still available, just not under a
+hijacked \pkg{sf} generic name: \code{sql_call(x, "ST_GeomFromText")} (or
+\code{"ST_GeomFromWKB"}/\code{"ST_GeomFromGeoJSON"}).
+\describe{
+  \item{\code{st_crs(x, geom = "geometry")}:}{
+    The CRS of column \code{geom}, via \code{ST_CRS}.
+  }
+  \item{\code{st_as_sfc(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE, geom = "geometry")}:}{
+    Collects column \code{geom} into an in-memory \code{\link[sf]{sfc}},
+    tagged with its \code{st_crs()} unless overridden by an explicit,
+    non-\code{NA} \code{crs}. If \code{geom} is already
+    \code{GEOMETRY}-typed, it's parsed from its raw WKB directly;
+    otherwise it's collected as-is (WKT text, GeoJSON text, or a list of
+    raw WKB, per \code{WKB}/\code{GeoJSON}) and handed to plain
+    \code{\link[sf]{st_as_sfc}}'s own parsers. Either way, a missing/
+    \code{NULL} cell becomes an empty geometry rather than erroring, and
+    \code{...} reaches \code{st_as_sfc()}'s own parsers.
+  }
+  \item{\code{st_as_sf(x, ..., geom = "geometry")}:}{
+    Collects \code{x} into an in-memory \code{\link[sf]{sf}} object,
+    with \code{geom} as its active geometry column. Every
+    \code{GEOMETRY}-typed column (not just \code{geom}) is parsed via
+    \code{\link[sf]{st_as_sfc}} from its raw WKB and tagged with its own
+    \code{st_crs(x, geom = <column>)}, so a second geometry column (e.g.
+    a buffer alongside a point) doesn't survive as inert raw bytes.
+    \code{...} is passed on to \code{\link[sf]{st_as_sf}}. Unlike
+    \code{st_collect(x)} below, which combines every row's geometry into
+    one, this keeps one feature per row.
   }
 }
 }
