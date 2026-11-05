@@ -21,7 +21,11 @@ layerSpatialMatch(x, table, coords, geom = "geometry", join = NULL)
 Integer vector of match indices (NA where unmatched).
 }
 \description{
-Match points in a lazy table layer to a geometry table
+When \code{table} is a \code{DuckDBTable}/\code{DuckDBDataFrame}, its
+\code{geom} column does not need to already be DuckDB-native
+\code{GEOMETRY}: a plain WKT-text column (e.g. from a CSV, or any
+non-GeoParquet source) is detected automatically via a cheap schema probe
+and cast as needed.
 }
 \examples{
 spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")

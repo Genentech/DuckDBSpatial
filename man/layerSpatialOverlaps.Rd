@@ -20,7 +20,10 @@ Logical vector of length \code{nrow(x)}.
 }
 \description{
 Layer-level intersection predicate for \link[DuckDBDataFrame:DuckDBDataFrame-class]{DuckDBDataFrame}
-objects. Accepts coordinate columns or a geometry column.
+objects. Accepts coordinate columns or a geometry column. The \code{geom}
+column does not need to already be DuckDB-native \code{GEOMETRY}: a plain
+WKT-text column (e.g. from a CSV, or any non-GeoParquet source) is
+detected automatically via a cheap schema probe and cast as needed.
 }
 \examples{
 pts_path <- tempfile(fileext = ".csv")

@@ -1,3 +1,23 @@
+# DuckDBSpatial 0.99.14
+
+## Bug fixes
+
+- `layerSpatialMatch()`/`layerSpatialOverlaps()` (geometry-column path) and
+  `st_join()`/`st_join_table()` on a `DuckDBTable`/`DuckDBDataFrame` all
+  assumed an existing geometry column was already DuckDB-native `GEOMETRY`,
+  with no check or cast. `.as_duckdb_table()` already detects and casts a
+  WKT-text geometry column, but only when uploading a fresh in-memory
+  object for the first time; it's a no-op for anything that's already a
+  `DuckDBTable`/`DuckDBDataFrame`, which is exactly the case these four
+  functions hit. A `DuckDBDataFrame`/`DuckDBTable` built with a plain
+  WKT-text geometry column (e.g. from a CSV, or any non-GeoParquet source)
+  failed with a raw DuckDB binder error ("No function matches the given
+  name and argument types 'ST_Intersects(GEOMETRY, VARCHAR)'") instead of
+  working. All four now probe the column's actual type first (a cheap
+  `typeof(...) ... LIMIT 1` schema query, negligible next to the join
+  itself) and wrap it in `ST_GeomFromText()` only when it isn't already
+  `GEOMETRY`-typed, so an already-native column incurs no double-cast.
+
 # DuckDBSpatial 0.99.13
 
 ## Significant changes

@@ -315,6 +315,15 @@
 #'     \code{data.frame}) matching a spatial predicate.
 #'   }
 #' }
+#' \code{st_join()}/\code{st_join_table()}'s \code{"geometry"} column, on
+#' either \code{x} or \code{y}, does not need to already be DuckDB-native
+#' \code{GEOMETRY}: a plain WKT-text column (e.g. from a CSV, or any
+#' non-GeoParquet source) is detected automatically and cast as needed: an
+#' in-memory \code{sf}/\code{data.frame} is cast on upload (same as always),
+#' and a \code{DuckDBTable}/\code{DuckDBDataFrame} whose \code{"geometry"}
+#' column is still text is detected via a cheap schema probe and cast in the
+#' join SQL itself, so either input shape works without an explicit
+#' \code{ST_GeomFromText()} cast from the caller.
 #'
 #' @section SQL Geometry Helpers:
 #' Low-level helpers that return \code{dplyr::sql} expressions for use in
@@ -1529,6 +1538,61 @@ st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
     }
 })
 
+### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+### WKT-vs-GEOMETRY schema probe for hand-built join SQL
+###
+### .as_duckdb_table() below already detects and casts a WKT-text geometry
+### column, but only when uploading a fresh in-memory object for the first
+### time: it's a no-op for anything that's already a DuckDBTable/
+### DuckDBDataFrame. .spatialMatch_sql()/layerSpatialOverlaps() (both in
+### DuckDBDataFrame-spatial.R) and st_join_table()/st_join.DuckDBTable()
+### (below) build their SQL by hand and hit exactly that already-a-table
+### case: a plain WKT-text geometry column (e.g. from a CSV, or any
+### non-GeoParquet source) survives untouched into the join and DuckDB
+### rejects it at bind time ("No function matches the given name and
+### argument types 'ST_Intersects(GEOMETRY, VARCHAR)'"). These two helpers
+### probe the rendered SQL's own column type and cast only when needed.
+###
+
+#' @importFrom DBI dbGetQuery
+.geom_col_is_native <- function(conn, query_sql, colname) {
+    colname_sql <- gsub('"', '""', colname, fixed = TRUE)
+    probe_sql <- sprintf('SELECT typeof("%s") AS "__type__" FROM (%s) LIMIT 1',
+                         colname_sql, query_sql)
+    probed <- tryCatch(dbGetQuery(conn, probe_sql), error = function(e) NULL)
+    if (is.null(probed) || nrow(probed) == 0L) {
+        # LIMIT 1 has nothing to evaluate typeof() against when the subquery
+        # is empty; fall back to a schema-only DESCRIBE (not data-dependent),
+        # the same technique DuckDBDataFrame's own coltypes() uses.
+        probed <- tryCatch(dbGetQuery(conn, sprintf("DESCRIBE (%s)", query_sql)),
+                           error = function(e) NULL)
+        if (is.null(probed))
+            return(FALSE)
+        idx <- match(colname, probed$column_name)
+        return(!is.na(idx) && .is_geometry_type(probed$column_type[idx]))
+    }
+    .is_geometry_type(probed[["__type__"]][1L])
+}
+
+# A GEOMETRY column round-tripped through GeoParquet carries its CRS as part
+# of the type itself (e.g. GEOMETRY('OGC:CRS84')), not just bare "GEOMETRY";
+# matches the same "^geometry(\\(.*\\))?$" pattern DuckDBDataFrame's own
+# coltypes()/.duckdb_container_type() uses to recognize either form.
+.is_geometry_type <- function(type) {
+    !is.na(type) && grepl("^geometry(\\(.*\\))?$", tolower(type))
+}
+
+# Column reference ready to splice into hand-built SQL: the bare, optionally
+# table-prefixed, quoted column reference when it's already GEOMETRY-typed,
+# or an ST_GeomFromText() cast around it otherwise.
+.geom_col_sql_ref <- function(conn, query_sql, colname, prefix = NULL) {
+    colname_sql <- gsub('"', '""', colname, fixed = TRUE)
+    ref <- if (is.null(prefix)) sprintf('"%s"', colname_sql)
+           else sprintf('%s."%s"', prefix, colname_sql)
+    if (.geom_col_is_native(conn, query_sql, colname)) ref
+    else sprintf("ST_GeomFromText(%s)", ref)
+}
+
 #' @importFrom DuckDBDataFrame DuckDBDataFrame acquireDuckDBConn
 #' @importFrom dplyr copy_to mutate sql
 #' @importFrom sf st_as_sfc st_as_text st_geometry st_sfc
@@ -1599,9 +1663,15 @@ st_join.DuckDBTable <- function(x, y, join = st_intersects, ...) {
     conn <- dbconn(x)
     x_q <- sql_render(tblconn(x, select = FALSE))
     y_q <- sql_render(tblconn(y, select = FALSE))
+    # x may already be a DuckDBTable (unlike y, never routed through
+    # .as_duckdb_table()'s WKT-detection-and-cast), so either side's
+    # "geometry" column may still be plain WKT text; probe and cast only
+    # the side(s) that need it.
+    x_geom <- .geom_col_sql_ref(conn, x_q, "geometry", prefix = "x")
+    y_geom <- .geom_col_sql_ref(conn, y_q, "geometry", prefix = "y")
     sql_txt <- sprintf(
-        "SELECT x.*, y.* FROM (%s) x INNER JOIN (%s) y ON %s(x.geometry, y.geometry)",
-        x_q, y_q, pred)
+        "SELECT x.*, y.* FROM (%s) x INNER JOIN (%s) y ON %s(%s, %s)",
+        x_q, y_q, pred, x_geom, y_geom)
     .lazy_sql_ddf(conn, sql_txt)
 }
 
@@ -1618,12 +1688,19 @@ st_join_table <- function(x, y, join = st_intersects, sparse = TRUE, ...) {
     conn <- dbconn(x)
     x_q <- sql_render(tblconn(x, select = FALSE))
     y_q <- sql_render(tblconn(y, select = FALSE))
+    # .as_duckdb_table() is a no-op for an 'x'/'y' that's already a
+    # DuckDBTable, so either side's "geometry" column may still be plain
+    # WKT text; probe and cast only the side(s) that need it. The
+    # row_number() wrapping below carries "geometry" through via SELECT *,
+    # so probing the unwrapped x_q/y_q still reflects the joined column.
+    x_geom <- .geom_col_sql_ref(conn, x_q, "geometry", prefix = "x")
+    y_geom <- .geom_col_sql_ref(conn, y_q, "geometry", prefix = "y")
     sql_txt <- sprintf(
         paste0("SELECT x.__rowid__ AS id_x, y.__rowid__ AS id_y ",
                "FROM (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) x ",
                "INNER JOIN (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) y ",
-               "ON %s(x.geometry, y.geometry)"),
-        x_q, y_q, pred)
+               "ON %s(%s, %s)"),
+        x_q, y_q, pred, x_geom, y_geom)
     if (isTRUE(sparse)) {
         .lazy_sql_ddf(conn, sql_txt)
     } else {

@@ -529,6 +529,15 @@ predicates) and returns a GEOMETRY DuckDBTable.
     \code{data.frame}) matching a spatial predicate.
   }
 }
+\code{st_join()}/\code{st_join_table()}'s \code{"geometry"} column, on
+either \code{x} or \code{y}, does not need to already be DuckDB-native
+\code{GEOMETRY}: a plain WKT-text column (e.g. from a CSV, or any
+non-GeoParquet source) is detected automatically and cast as needed: an
+in-memory \code{sf}/\code{data.frame} is cast on upload (same as always),
+and a \code{DuckDBTable}/\code{DuckDBDataFrame} whose \code{"geometry"}
+column is still text is detected via a cheap schema probe and cast in the
+join SQL itself, so either input shape works without an explicit
+\code{ST_GeomFromText()} cast from the caller.
 }
 
 \section{SQL Geometry Helpers}{

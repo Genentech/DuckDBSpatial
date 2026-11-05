@@ -380,6 +380,80 @@ test_that("st_join_table does not collide with a pre-existing id_x/id_y data col
     expect_true(all(pairs$id_y %in% seq_len(nrow(tagged))))
 })
 
+test_that("st_join/st_join_table cast a plain WKT-text geometry column on either side, not just a freshly-uploaded one", {
+    # .as_duckdb_table() detects and casts a WKT-text geometry column, but
+    # only when uploading a fresh in-memory object for the first time; it's
+    # a no-op for anything that's already a DuckDBTable/DuckDBDataFrame.
+    # 'x' here (unlike the plain-data.frame 'y' in the test above) is
+    # exactly that already-a-table case, built with datacols= the same way
+    # a CSV-backed layer would be.
+    pts_wkt <- c("POINT(1 1)", "POINT(11 11)", "POINT(99 99)")
+    csv_path <- tempfile(fileext = ".csv")
+    on.exit(unlink(csv_path), add = TRUE)
+    write.csv(data.frame(id = 1:3, geometry = pts_wkt, stringsAsFactors = FALSE),
+              csv_path, row.names = FALSE)
+    x_text <- DuckDBDataFrame(csv_path, datacols = c("id", "geometry"))
+    expect_false(hasGeometry(x_text))
+
+    df <- DuckDBDataFrame(spatial_path)
+    df <- df[which(!is.na(spatial_wkt)), ]
+
+    pts_sfc <- st_as_sfc(pts_wkt)
+    shapes_sfc <- st_as_sfc(spatial_wkt[!is.na(spatial_wkt)])
+    gt_pairs <- sum(lengths(st_intersects(pts_sfc, shapes_sfc)))
+    expect_true(gt_pairs > 0L)
+
+    pairs <- as.data.frame(st_join_table(x_text, df))
+    expect_equal(nrow(pairs), gt_pairs)
+
+    joined <- st_join(x_text, df)
+    expect_s4_class(joined, "DuckDBDataFrame")
+    expect_equal(nrow(joined), gt_pairs)
+
+    # Same asymmetry the other way round: 'y' already a DuckDBTable with
+    # WKT-text geometry (as opposed to the plain-data.frame 'y' case already
+    # covered, which goes through .as_duckdb_table()'s own cast).
+    pairs_rev <- as.data.frame(st_join_table(df, x_text))
+    expect_equal(nrow(pairs_rev), gt_pairs)
+})
+
+test_that(".geom_col_is_native()/.geom_col_sql_ref() detect native GEOMETRY without double-casting", {
+    df <- DuckDBDataFrame(spatial_path)
+    df <- df[which(!is.na(spatial_wkt)), ]
+    conn <- dbconn(df)
+    q <- dbplyr::sql_render(tblconn(df, select = FALSE))
+
+    expect_true(DuckDBSpatial:::.geom_col_is_native(conn, q, "geometry"))
+    ref <- DuckDBSpatial:::.geom_col_sql_ref(conn, q, "geometry", prefix = "t")
+    expect_equal(ref, 't."geometry"')
+    expect_false(grepl("ST_GeomFromText", ref, fixed = TRUE))
+
+    csv_path <- tempfile(fileext = ".csv")
+    on.exit(unlink(csv_path), add = TRUE)
+    write.csv(data.frame(id = 1, geometry = "POINT(1 1)", stringsAsFactors = FALSE),
+              csv_path, row.names = FALSE)
+    text_df <- DuckDBDataFrame(csv_path, datacols = c("id", "geometry"))
+    conn2 <- dbconn(text_df)
+    q2 <- dbplyr::sql_render(tblconn(text_df, select = FALSE))
+    expect_false(DuckDBSpatial:::.geom_col_is_native(conn2, q2, "geometry"))
+    ref2 <- DuckDBSpatial:::.geom_col_sql_ref(conn2, q2, "geometry", prefix = "t")
+    expect_equal(ref2, 'ST_GeomFromText(t."geometry")')
+
+    # A GEOMETRY column round-tripped through GeoParquet carries its CRS as
+    # part of the type itself (e.g. GEOMETRY('OGC:CRS84')); must still be
+    # recognized as native, not just bare "GEOMETRY".
+    expect_true(DuckDBSpatial:::.is_geometry_type("GEOMETRY('OGC:CRS84')"))
+    expect_true(DuckDBSpatial:::.is_geometry_type("geometry"))
+    expect_false(DuckDBSpatial:::.is_geometry_type("VARCHAR"))
+
+    # Empty subquery: a LIMIT 1 probe has nothing to evaluate typeof()
+    # against, so this must fall back to a schema-only DESCRIBE rather than
+    # silently (and incorrectly) reporting "not geometry".
+    empty_df <- df[integer(0), , drop = FALSE]
+    q_empty <- dbplyr::sql_render(tblconn(empty_df, select = FALSE))
+    expect_true(DuckDBSpatial:::.geom_col_is_native(dbconn(empty_df), q_empty, "geometry"))
+})
+
 test_that("st_join maps the sf predicate to its ST_* SQL function", {
     resolve <- DuckDBSpatial:::.st_predicate_sql_name
     expect_equal(resolve(sf::st_intersects), "ST_Intersects")
@@ -496,6 +570,55 @@ test_that("Layer spatial engines work as expected for a DuckDBDataFrame", {
     mem_tbl <- S4Vectors::DataFrame(geometry = shapes_sfc)
     matched_mem <- layerSpatialMatch(pts, mem_tbl, coords = c("x", "y"))
     expect_identical(matched_mem, matched_exp)
+})
+
+test_that("layerSpatialMatch/.spatialMatch_sql cast a plain WKT-text geometry column", {
+    # Unlike the GeoParquet-backed 'shapes_df' used above, a DuckDBDataFrame
+    # built with datacols= from a CSV (or any other non-GeoParquet source)
+    # is a perfectly ordinary way to end up with a plain WKT-text "geometry"
+    # column rather than a DuckDB-native GEOMETRY one; .spatialMatch_sql()
+    # never routes 'table' through .as_duckdb_table()'s WKT-detection cast.
+    shapes_wkt <- c("POLYGON((0 0, 6 0, 6 6, 0 6, 0 0))",
+                    "POLYGON((20 5, 40 5, 40 15, 20 15, 20 5))")
+    shapes_csv <- tempfile(fileext = ".csv")
+    on.exit(unlink(shapes_csv), add = TRUE)
+    write.csv(data.frame(id = 1:2, geometry = shapes_wkt, stringsAsFactors = FALSE),
+              shapes_csv, row.names = FALSE)
+    shapes_text <- DuckDBDataFrame(shapes_csv, datacols = c("id", "geometry"))
+    expect_false(hasGeometry(shapes_text))
+
+    pts_csv <- tempfile(fileext = ".csv")
+    on.exit(unlink(pts_csv), add = TRUE)
+    write.csv(data.frame(x = c(1, 5, 10, 50), y = c(1, 5, 10, 50)), pts_csv,
+              row.names = FALSE)
+    pts <- DuckDBDataFrame(pts_csv, datacols = c("x", "y"))
+
+    matched <- layerSpatialMatch(pts, shapes_text, coords = c("x", "y"))
+
+    pts_sfc <- st_as_sfc(paste0("POINT(", c(1, 5, 10, 50), " ", c(1, 5, 10, 50), ")"))
+    shapes_sfc <- st_as_sfc(shapes_wkt)
+    matched_exp <- vapply(st_intersects(pts_sfc, shapes_sfc), function(h) {
+        if (length(h) > 0L) min(h) else NA_integer_
+    }, integer(1L))
+    expect_identical(matched, matched_exp)
+})
+
+test_that("layerSpatialOverlaps casts a plain WKT-text geometry column", {
+    shapes_wkt <- c("POLYGON((0 0, 4 0, 4 4, 0 4, 0 0))",
+                    "POLYGON((10 10, 14 10, 14 14, 10 14, 10 10))")
+    shapes_csv <- tempfile(fileext = ".csv")
+    on.exit(unlink(shapes_csv), add = TRUE)
+    write.csv(data.frame(id = 1:2, geometry = shapes_wkt, stringsAsFactors = FALSE),
+              shapes_csv, row.names = FALSE)
+    shapes_text <- DuckDBDataFrame(shapes_csv, datacols = c("id", "geometry"))
+    expect_false(hasGeometry(shapes_text))
+
+    query_poly <- st_as_sfc("POLYGON((-1 -1, 5 -1, 5 5, -1 5, -1 -1))")
+    overlaps <- layerSpatialOverlaps(shapes_text, query_poly)
+
+    shapes_sfc <- st_as_sfc(shapes_wkt)
+    expect_identical(unname(overlaps),
+                     as.logical(lengths(st_intersects(shapes_sfc, query_poly)) > 0L))
 })
 
 test_that("GeoParquet I/O helpers work as expected", {

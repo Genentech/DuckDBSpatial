@@ -16,12 +16,16 @@
     t_q <- sql_render(tblconn(table, select = FALSE))
     pred <- if (identical(join_fun, sf::st_within)) "ST_Within" else "ST_Intersects"
     pt_expr <- sprintf('ST_Point(n."%s", n."%s")', coords[1L], coords[2L])
+    # 'table' may already be a DuckDBTable whose 'geom' column is still
+    # plain WKT text (e.g. from a CSV, or any non-GeoParquet source); probe
+    # and cast only if it isn't already DuckDB-native GEOMETRY.
+    geom_ref <- .geom_col_sql_ref(conn, t_q, geom, prefix = "t")
     sql_txt <- sprintf(
         paste0("WITH numbered AS (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) ",
                "SELECT n.__rowid__ AS id_x, MIN(t.__rowid__) AS match_idx ",
                "FROM numbered n JOIN (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) t ",
-               "ON %s(%s, t.\"%s\") GROUP BY n.__rowid__"),
-        x_q, t_q, pred, pt_expr, geom)
+               "ON %s(%s, %s) GROUP BY n.__rowid__"),
+        x_q, t_q, pred, pt_expr, geom_ref)
     pairs <- dbGetQuery(conn, sql_txt)
     n <- nrow(x)
     out <- rep(NA_integer_, n)
@@ -43,7 +47,10 @@
 #' Test spatial intersection for a lazy table layer
 #'
 #' Layer-level intersection predicate for \link[DuckDBDataFrame:DuckDBDataFrame-class]{DuckDBDataFrame}
-#' objects. Accepts coordinate columns or a geometry column.
+#' objects. Accepts coordinate columns or a geometry column. The \code{geom}
+#' column does not need to already be DuckDB-native \code{GEOMETRY}: a plain
+#' WKT-text column (e.g. from a CSV, or any non-GeoParquet source) is
+#' detected automatically via a cheap schema probe and cast as needed.
 #'
 #' @param x A \code{DuckDBDataFrame} layer.
 #' @param y A geometry (\code{sfc}, \code{sfg}), WKT character, or \code{dplyr::sql} expression.
@@ -77,6 +84,7 @@ layerSpatialOverlaps <- function(x, y, coords = NULL, geom = "geometry") {
     } else {
         geom_col <- x[[geom]]
         if (is(geom_col, "DuckDBColumn")) {
+            geom_col <- .geom_column_as_geometry(geom_col)
             as.logical(as.vector(st_intersects(geom_col, y)))
         } else {
             as.logical(as.vector(sf::st_intersects(geom_col, y)))
@@ -84,7 +92,28 @@ layerSpatialOverlaps <- function(x, y, coords = NULL, geom = "geometry") {
     }
 }
 
+# Same WKT-vs-GEOMETRY probe as .geom_col_sql_ref() (DuckDBTable-spatial.R),
+# but for a DuckDBColumn: casts via sql_call() instead of raw SQL text, so
+# the result stays a lazy DuckDBColumn ready to hand to st_intersects()
+# rather than a bare SQL fragment.
+#' @importFrom DuckDBDataFrame tblconn dbconn sql_call
+#' @importFrom dbplyr sql_render
+.geom_column_as_geometry <- function(col) {
+    colname <- names(col@table@datacols)[1L]
+    query_sql <- sql_render(tblconn(col, select = FALSE))
+    if (.geom_col_is_native(dbconn(col), query_sql, colname))
+        col
+    else
+        sql_call(col, "ST_GeomFromText")
+}
+
 #' Match points in a lazy table layer to a geometry table
+#'
+#' When \code{table} is a \code{DuckDBTable}/\code{DuckDBDataFrame}, its
+#' \code{geom} column does not need to already be DuckDB-native
+#' \code{GEOMETRY}: a plain WKT-text column (e.g. from a CSV, or any
+#' non-GeoParquet source) is detected automatically via a cheap schema probe
+#' and cast as needed.
 #'
 #' @param x A \code{DuckDBDataFrame} point layer.
 #' @param table A \code{DuckDBDataFrame} or in-memory \code{DataFrame} with geometries.
