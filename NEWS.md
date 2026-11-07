@@ -1,3 +1,14 @@
+# DuckDBSpatial 0.99.15
+
+## Bug fixes
+
+- Fixed a Bioconductor `nebbiolo2` build-report `WARNING`: a stray
+  `@aliases st_crs.DuckDBColumn` roxygen tag on `DuckDBTable-spatial.R`'s
+  `st_crs.DuckDBTable` documentation block duplicated the alias already
+  correctly declared on `DuckDBColumn-spatial.R`'s own `st_crs.DuckDBColumn`
+  method, flagged as "Rd files with duplicated alias". Removed the stray
+  tag.
+
 # DuckDBSpatial 0.99.14
 
 ## Bug fixes

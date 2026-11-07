@@ -353,7 +353,6 @@
 #' @aliases hasGeometry
 #'
 #' @aliases st_crs.DuckDBTable
-#' @aliases st_crs.DuckDBColumn
 #' @aliases st_as_sf.DuckDBTable
 #'
 #' @aliases st_as_binary.DuckDBTable

@@ -5,7 +5,6 @@
 \alias{st_as_sfc.DuckDBTable}
 \alias{hasGeometry}
 \alias{st_crs.DuckDBTable}
-\alias{st_crs.DuckDBColumn}
 \alias{st_as_sf.DuckDBTable}
 \alias{st_as_binary.DuckDBTable}
 \alias{st_as_text.DuckDBTable}
