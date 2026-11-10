@@ -1,3 +1,29 @@
+# DuckDBSpatial 0.99.16
+
+## Bug fixes
+
+- **Every `sf`-compatible predicate/measure/transform method on a
+  `DuckDBTable`/`DuckDBDataFrame` (`st_intersects()`, `st_buffer()`,
+  `st_area()`, and ~50 others) applied its SQL function to every column of
+  `x`, not just the geometry one.** Calling e.g.
+  `st_intersects(a_duckdb_dataframe, y)` on a layer with ordinary,
+  non-geometry columns alongside `"geometry"` (the routine case for any
+  `DuckDBDataFrame` used as an `sf`-like layer) failed with a confusing
+  DuckDB binder error, e.g. `No function matches the given name and
+  argument types 'ST_Intersects(INTEGER, GEOMETRY)'`, because `sql_call()`
+  built the SQL expression against every datacol. Reported externally
+  against `DuckDBSpatial::st_intersects()`, but the same `sql_call(x, ...)`
+  pattern affected the whole predicate/measure/transform family.
+  Added `st_geometry.DuckDBTable`, a new exported method that narrows `obj`
+  to its one GEOMETRY-typed column (detected by type, not by a name
+  convention, so it makes no assumption about what the column is called)
+  and errors clearly if `obj` does not have exactly one such column. Every
+  affected method now narrows through it before building its SQL
+  expression; `DuckDBColumn`'s own delegation to these methods (its
+  internal one-column table keeps the original column's name, not always
+  literally `"geometry"`) is unaffected, since detection no longer depends
+  on a name at all.
+
 # DuckDBSpatial 0.99.15
 
 ## Bug fixes

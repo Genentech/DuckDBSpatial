@@ -219,11 +219,16 @@ lazy (they build SQL and return another \code{DuckDBTable}); see
 \describe{
   \item{\code{hasGeometry(x, geom = "geometry")}:}{
     Logical: does \code{x} have a column named \code{geom} that is
-    actually \code{GEOMETRY}-typed? Every function in \emph{Geometry
-    Accessors}/\emph{Measurement}/\emph{Unary Geometry Operations}
-    below applies its SQL predicate to every column of \code{x}, and
-    only errors once the query is materialized, not when it's built;
-    use this to check first rather than find out later.
+    actually \code{GEOMETRY}-typed?
+  }
+  \item{\code{st_geometry(obj)}:}{
+    Narrows \code{obj} to a one-column \code{DuckDBTable} holding only its
+    GEOMETRY-typed column, detected by type rather than by name. Errors
+    if \code{obj} does not have exactly one such column. Every function in
+    \emph{Geometry Accessors}/\emph{Measurement}/\emph{Unary Geometry
+    Operations} below (and every binary predicate/operation that takes a
+    \code{y}) narrows to this one column via \code{st_geometry()} first,
+    rather than applying its SQL function to every column of \code{obj}.
   }
 }
 }

@@ -22,11 +22,16 @@
 #' \describe{
 #'   \item{\code{hasGeometry(x, geom = "geometry")}:}{
 #'     Logical: does \code{x} have a column named \code{geom} that is
-#'     actually \code{GEOMETRY}-typed? Every function in \emph{Geometry
-#'     Accessors}/\emph{Measurement}/\emph{Unary Geometry Operations}
-#'     below applies its SQL predicate to every column of \code{x}, and
-#'     only errors once the query is materialized, not when it's built;
-#'     use this to check first rather than find out later.
+#'     actually \code{GEOMETRY}-typed?
+#'   }
+#'   \item{\code{st_geometry(obj)}:}{
+#'     Narrows \code{obj} to a one-column \code{DuckDBTable} holding only its
+#'     GEOMETRY-typed column, detected by type rather than by name. Errors
+#'     if \code{obj} does not have exactly one such column. Every function in
+#'     \emph{Geometry Accessors}/\emph{Measurement}/\emph{Unary Geometry
+#'     Operations} below (and every binary predicate/operation that takes a
+#'     \code{y}) narrows to this one column via \code{st_geometry()} first,
+#'     rather than applying its SQL function to every column of \code{obj}.
 #'   }
 #' }
 #'
@@ -576,7 +581,7 @@ st_make_envelope_sql <- function(xmin, ymin, xmax, ymax) {
 #' @importFrom sf st_as_binary
 st_as_binary.DuckDBTable <- function(x, ..., hex = FALSE) {
     fun <- if (isTRUE(hex)) "ST_AsHEXWKB" else "ST_AsWKB"
-    sql_call(x, fun)
+    .sql_call_geom(x, fun)
 }
 
 #' @exportS3Method sf::st_as_text
@@ -584,7 +589,7 @@ st_as_binary.DuckDBTable <- function(x, ..., hex = FALSE) {
 #' @importFrom sf st_as_text
 st_as_text.DuckDBTable <- function(x, ..., geojson = FALSE) {
     fun <- if (isTRUE(geojson)) "ST_AsGeoJSON" else "ST_AsText"
-    sql_call(x, fun)
+    .sql_call_geom(x, fun)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -598,6 +603,22 @@ hasGeometry <- function(x, geom = "geometry") {
         stop("'x' must be a DuckDBTable or DuckDBDataFrame")
     types <- coltypes(x)
     geom %in% names(types) && isTRUE(unname(types[[geom]]) == "geometry")
+}
+
+#' @export
+#' @importFrom DuckDBDataFrame coltypes
+#' @importFrom sf st_geometry
+st_geometry.DuckDBTable <- function(obj, ...) {
+    types <- coltypes(obj)
+    geom <- names(types)[!is.na(types) & unname(types) == "geometry"]
+    if (length(geom) != 1L)
+        stop("'obj' must have exactly one GEOMETRY column")
+    obj[, geom, drop = FALSE]
+}
+
+#' @importFrom DuckDBDataFrame sql_call
+.sql_call_geom <- function(x, fun, ...) {
+    sql_call(st_geometry(x), fun, ...)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -719,7 +740,7 @@ st_dimension.default <- function(x, ...) sf::st_dimension(x, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_dimension.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_Dimension")
+    .sql_call_geom(x, "ST_Dimension")
 }
 
 #' @export
@@ -733,7 +754,7 @@ st_end_point.default <- function(x, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_end_point.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_EndPoint")
+    .sql_call_geom(x, "ST_EndPoint")
 }
 
 #' @export
@@ -745,7 +766,7 @@ st_geometry_type.default <- function(x, ...) sf::st_geometry_type(x, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_geometry_type.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_GeometryType")
+    .sql_call_geom(x, "ST_GeometryType")
 }
 
 #' @export
@@ -759,7 +780,7 @@ st_is_closed.default <- function(x, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_is_closed.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_IsClosed")
+    .sql_call_geom(x, "ST_IsClosed")
 }
 
 #' @export
@@ -771,7 +792,7 @@ st_is_empty.default <- function(x, ...) sf::st_is_empty(x, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_is_empty.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_IsEmpty")
+    .sql_call_geom(x, "ST_IsEmpty")
 }
 
 #' @export
@@ -785,7 +806,7 @@ st_is_ring.default <- function(x, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_is_ring.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_IsRing")
+    .sql_call_geom(x, "ST_IsRing")
 }
 
 #' @export
@@ -797,14 +818,14 @@ st_is_simple.default <- function(x, ...) sf::st_is_simple(x, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_is_simple.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_IsSimple")
+    .sql_call_geom(x, "ST_IsSimple")
 }
 
 #' @exportS3Method sf::st_is_valid
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_is_valid
 st_is_valid.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_IsValid")
+    .sql_call_geom(x, "ST_IsValid")
 }
 
 #' @export
@@ -817,7 +838,7 @@ st_num_geometries.default <- function(x, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_num_geometries.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_NumGeometries")
+    .sql_call_geom(x, "ST_NumGeometries")
 }
 
 #' @export
@@ -830,7 +851,7 @@ st_num_interior_rings.default <- function(x, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_num_interior_rings.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_NumInteriorRings")
+    .sql_call_geom(x, "ST_NumInteriorRings")
 }
 
 #' @export
@@ -844,7 +865,7 @@ st_num_points.default <- function(x, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_num_points.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_NumPoints")
+    .sql_call_geom(x, "ST_NumPoints")
 }
 
 #' @export
@@ -858,7 +879,7 @@ st_start_point.default <- function(x, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_start_point.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_StartPoint")
+    .sql_call_geom(x, "ST_StartPoint")
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -869,7 +890,7 @@ st_start_point.DuckDBTable <- function(x, ...) {
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_area
 st_area.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_Area")
+    .sql_call_geom(x, "ST_Area")
 }
 
 #' @export
@@ -881,7 +902,7 @@ st_distance.default <- function(x, y, ...) sf::st_distance(x, y, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_distance.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_Distance", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_Distance", .geom_to_sql(y))
 }
 
 #' @export
@@ -893,7 +914,7 @@ st_length.default <- function(x, ...) sf::st_length(x, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_length.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_Length")
+    .sql_call_geom(x, "ST_Length")
 }
 
 #' @export
@@ -905,7 +926,7 @@ st_perimeter.default <- function(x, ...) sf::st_perimeter(x, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_perimeter.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_Perimeter")
+    .sql_call_geom(x, "ST_Perimeter")
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -915,15 +936,15 @@ st_perimeter.DuckDBTable <- function(x, ...) {
 #' @exportS3Method sf::st_boundary
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_boundary
-st_boundary.DuckDBTable <- function(x) {
-    sql_call(x, "ST_Boundary")
+st_boundary.DuckDBTable <- function(x, ...) {
+    .sql_call_geom(x, "ST_Boundary")
 }
 
 #' @exportS3Method sf::st_buffer
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_buffer
 st_buffer.DuckDBTable <- function(x, dist, ...) {
-    sql_call(x, "ST_Buffer", as.numeric(dist))
+    .sql_call_geom(x, "ST_Buffer", as.numeric(dist))
 }
 
 #' @export
@@ -937,14 +958,14 @@ st_build_area.default <- function(x, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_build_area.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_BuildArea")
+    .sql_call_geom(x, "ST_BuildArea")
 }
 
 #' @exportS3Method sf::st_centroid
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_centroid
 st_centroid.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_Centroid")
+    .sql_call_geom(x, "ST_Centroid")
 }
 
 .collection_extract_type_to_int <- function(type) {
@@ -958,7 +979,7 @@ st_centroid.DuckDBTable <- function(x, ...) {
 st_collection_extract.DuckDBTable <-
 function(x, type = c("POLYGON", "POINT", "LINESTRING"), warn = FALSE, ...) {
     type_int <- .collection_extract_type_to_int(type)
-    sql_call(x, "ST_CollectionExtract", type_int)
+    .sql_call_geom(x, "ST_CollectionExtract", type_int)
 }
 
 #' @exportS3Method sf::st_concave_hull
@@ -966,14 +987,14 @@ function(x, type = c("POLYGON", "POINT", "LINESTRING"), warn = FALSE, ...) {
 #' @importFrom sf st_concave_hull
 st_concave_hull.DuckDBTable <-
 function(x, ratio, ..., allow_holes = FALSE) {
-    sql_call(x, "ST_ConcaveHull", as.numeric(ratio), allow_holes)
+    .sql_call_geom(x, "ST_ConcaveHull", as.numeric(ratio), allow_holes)
 }
 
 #' @exportS3Method sf::st_convex_hull
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_convex_hull
-st_convex_hull.DuckDBTable <- function(x) {
-    sql_call(x, "ST_ConvexHull")
+st_convex_hull.DuckDBTable <- function(x, ...) {
+    .sql_call_geom(x, "ST_ConvexHull")
 }
 
 #' @export
@@ -982,14 +1003,14 @@ st_envelope <- function(x, ...) UseMethod("st_envelope")
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_envelope.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_Envelope")
+    .sql_call_geom(x, "ST_Envelope")
 }
 
 #' @exportS3Method sf::st_exterior_ring
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_exterior_ring
 st_exterior_ring.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_ExteriorRing")
+    .sql_call_geom(x, "ST_ExteriorRing")
 }
 
 #' Apply a 2-D affine coordinate transform to geometries
@@ -1034,7 +1055,7 @@ st_affine.default <- function(x, affine, ...) {
 #' @importFrom DuckDBDataFrame sql_call
 st_affine.DuckDBTable <- function(x, affine, ...) {
     co <- .ctTo2DAffine(affine)
-    sql_call(x, "ST_Affine", co$a, co$b, co$d, co$e, co$xoff, co$yoff)
+    .sql_call_geom(x, "ST_Affine", co$a, co$b, co$d, co$e, co$xoff, co$yoff)
 }
 
 #' @export
@@ -1048,7 +1069,7 @@ st_flip_coordinates.default <- function(x, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_flip_coordinates.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_FlipCoordinates")
+    .sql_call_geom(x, "ST_FlipCoordinates")
 }
 
 #' @export
@@ -1065,6 +1086,7 @@ st_inscribed_circle.DuckDBTable <-
 function(x, dTolerance, ..., nQuadSegs = 30) {
     stopifnot(!missing(dTolerance), is.numeric(dTolerance), length(dTolerance) == 1L)
     dtol <- as.numeric(dTolerance)
+    x <- st_geometry(x)
     FUN <- function(j) {
         mic <- call("ST_MaximumInscribedCircle", j, dtol)
         center <- call("struct_extract", mic, "center")
@@ -1090,6 +1112,7 @@ st_line_interpolate.DuckDBTable <-
 function(line, dist, ..., normalized = FALSE) {
     stopifnot(is.numeric(dist), length(dist) == 1L)
     d <- as.numeric(dist)
+    line <- st_geometry(line)
     FUN <- function(j) {
         frac <- if (normalized) d
                 else call("/", d, call("ST_Length", j))
@@ -1103,7 +1126,7 @@ function(line, dist, ..., normalized = FALSE) {
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_line_merge
 st_line_merge.DuckDBTable <- function(x, ..., directed = FALSE) {
-    sql_call(x, "ST_LineMerge", directed)
+    .sql_call_geom(x, "ST_LineMerge", directed)
 }
 
 #' @export
@@ -1120,6 +1143,7 @@ st_line_project.default <- function(line, point, ...) {
 st_line_project.DuckDBTable <-
 function(line, point, ..., normalized = FALSE) {
     pt_sql <- .geom_to_sql(point)
+    line <- st_geometry(line)
     FUN <- function(j) {
         frac <- call("ST_LineLocatePoint", j, pt_sql)
         if (normalized) frac else call("*", frac, call("ST_Length", j))
@@ -1139,42 +1163,42 @@ st_line_substring.default <- function(line, start, end, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_line_substring.DuckDBTable <- function(line, start, end, ...) {
-    sql_call(line, "ST_LineSubstring", as.numeric(start), as.numeric(end))
+    .sql_call_geom(line, "ST_LineSubstring", as.numeric(start), as.numeric(end))
 }
 
 #' @exportS3Method sf::st_make_valid
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_make_valid
 st_make_valid.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_MakeValid")
+    .sql_call_geom(x, "ST_MakeValid")
 }
 
 #' @exportS3Method sf::st_minimum_rotated_rectangle
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_minimum_rotated_rectangle
 st_minimum_rotated_rectangle.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_MinimumRotatedRectangle")
+    .sql_call_geom(x, "ST_MinimumRotatedRectangle")
 }
 
 #' @exportS3Method sf::st_node
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_node
 st_node.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_Node")
+    .sql_call_geom(x, "ST_Node")
 }
 
 #' @exportS3Method sf::st_normalize
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_normalize
 st_normalize.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_Normalize")
+    .sql_call_geom(x, "ST_Normalize")
 }
 
 #' @exportS3Method sf::st_point_on_surface
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_point_on_surface
-st_point_on_surface.DuckDBTable <- function(x) {
-    sql_call(x, "ST_PointOnSurface")
+st_point_on_surface.DuckDBTable <- function(x, ...) {
+    .sql_call_geom(x, "ST_PointOnSurface")
 }
 
 #' @export
@@ -1188,7 +1212,7 @@ st_reduce_precision.default <- function(x, precision, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_reduce_precision.DuckDBTable <- function(x, precision, ...) {
-    sql_call(x, "ST_ReducePrecision", as.numeric(precision))
+    .sql_call_geom(x, "ST_ReducePrecision", as.numeric(precision))
 }
 
 #' @export
@@ -1202,14 +1226,14 @@ st_remove_repeated_points.default <- function(x, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_remove_repeated_points.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_RemoveRepeatedPoints")
+    .sql_call_geom(x, "ST_RemoveRepeatedPoints")
 }
 
 #' @exportS3Method sf::st_reverse
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_reverse
-st_reverse.DuckDBTable <- function(x) {
-    sql_call(x, "ST_Reverse")
+st_reverse.DuckDBTable <- function(x, ...) {
+    .sql_call_geom(x, "ST_Reverse")
 }
 
 #' @exportS3Method sf::st_simplify
@@ -1219,14 +1243,14 @@ st_simplify.DuckDBTable <-
 function(x, preserveTopology = FALSE, dTolerance = 0.0, ...) {
     fun <- if (isTRUE(preserveTopology)) "ST_SimplifyPreserveTopology"
            else "ST_Simplify"
-    sql_call(x, fun, as.numeric(dTolerance))
+    .sql_call_geom(x, fun, as.numeric(dTolerance))
 }
 
 #' @exportS3Method sf::st_voronoi
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_voronoi
 st_voronoi.DuckDBTable <- function(x, ...) {
-    sql_call(x, "ST_VoronoiDiagram")
+    .sql_call_geom(x, "ST_VoronoiDiagram")
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1242,7 +1266,7 @@ st_contains.default <- function(x, y, ...) sf::st_contains(x, y, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_contains.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_Contains", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_Contains", .geom_to_sql(y))
 }
 
 #' @export
@@ -1256,7 +1280,7 @@ st_contains_properly.default <- function(x, y, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_contains_properly.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_ContainsProperly", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_ContainsProperly", .geom_to_sql(y))
 }
 
 #' @export
@@ -1268,7 +1292,7 @@ st_covered_by.default <- function(x, y, ...) sf::st_covered_by(x, y, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_covered_by.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_CoveredBy", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_CoveredBy", .geom_to_sql(y))
 }
 
 #' @export
@@ -1280,7 +1304,7 @@ st_covers.default <- function(x, y, ...) sf::st_covers(x, y, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_covers.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_Covers", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_Covers", .geom_to_sql(y))
 }
 
 #' @export
@@ -1292,7 +1316,7 @@ st_crosses.default <- function(x, y, ...) sf::st_crosses(x, y, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_crosses.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_Crosses", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_Crosses", .geom_to_sql(y))
 }
 
 #' @export
@@ -1304,7 +1328,7 @@ st_disjoint.default <- function(x, y, ...) sf::st_disjoint(x, y, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_disjoint.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_Disjoint", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_Disjoint", .geom_to_sql(y))
 }
 
 #' @export
@@ -1316,14 +1340,14 @@ st_equals.default <- function(x, y, ...) sf::st_equals(x, y, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_equals.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_Equals", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_Equals", .geom_to_sql(y))
 }
 
 #' @exportS3Method sf::st_intersects
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_intersects
 st_intersects.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_Intersects", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_Intersects", .geom_to_sql(y))
 }
 
 #' @export
@@ -1337,7 +1361,7 @@ st_is_within_distance.default <- function(x, y, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_is_within_distance.DuckDBTable <- function(x, y, dist, ...) {
-    sql_call(x, "ST_DWithin", .geom_to_sql(y), as.numeric(dist))
+    .sql_call_geom(x, "ST_DWithin", .geom_to_sql(y), as.numeric(dist))
 }
 
 #' @export
@@ -1349,7 +1373,7 @@ st_overlaps.default <- function(x, y, ...) sf::st_overlaps(x, y, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_overlaps.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_Overlaps", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_Overlaps", .geom_to_sql(y))
 }
 
 #' @export
@@ -1361,7 +1385,7 @@ st_touches.default <- function(x, y, ...) sf::st_touches(x, y, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_touches.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_Touches", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_Touches", .geom_to_sql(y))
 }
 
 #' @export
@@ -1373,7 +1397,7 @@ st_within.default <- function(x, y, ...) sf::st_within(x, y, ...)
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_within.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_Within", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_Within", .geom_to_sql(y))
 }
 
 #' @export
@@ -1387,7 +1411,7 @@ st_within_properly.default <- function(x, y, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_within_properly.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_WithinProperly", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_WithinProperly", .geom_to_sql(y))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1398,21 +1422,21 @@ st_within_properly.DuckDBTable <- function(x, y, ...) {
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_difference
 st_difference.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_Difference", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_Difference", .geom_to_sql(y))
 }
 
 #' @exportS3Method sf::st_intersection
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_intersection
 st_intersection.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_Intersection", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_Intersection", .geom_to_sql(y))
 }
 
 #' @exportS3Method sf::st_nearest_points
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_nearest_points
 st_nearest_points.DuckDBTable <- function(x, y, ...) {
-    sql_call(x, "ST_ShortestLine", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_ShortestLine", .geom_to_sql(y))
 }
 
 #' @exportS3Method sf::st_union
@@ -1422,7 +1446,7 @@ st_union.DuckDBTable <- function(x, y, ...) {
     if (missing(y))
         stop("'y' is required for st_union on DuckDBTable; ",
              "use st_union on DuckDBColumn for aggregate union")
-    sql_call(x, "ST_Union", .geom_to_sql(y))
+    .sql_call_geom(x, "ST_Union", .geom_to_sql(y))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
