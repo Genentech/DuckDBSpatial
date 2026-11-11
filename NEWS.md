@@ -1,3 +1,21 @@
+# DuckDBSpatial 0.99.17
+
+## Bug fixes
+
+- **Geometry-transforming methods on a `DuckDBTable`/`DuckDBDataFrame` (`st_buffer()`,
+  `st_centroid()`, `st_simplify()`, and ~20 others, plus the binary set operations
+  `st_difference()`/`st_intersection()`/`st_union()`) dropped every non-geometry column.**
+  0.99.16 fixed these to stop applying their SQL function to every column, but narrowing to just
+  the geometry column (via the new `st_geometry.DuckDBTable`) meant the result kept only that one
+  column -- unlike plain `sf`, where e.g. `st_buffer(an_sf_object, dist)` returns the full object
+  with every other column retained and just the geometry replaced (confirmed directly against
+  `sf`'s own source: every one of these methods' `.sf` dispatch is literally
+  `st_set_geometry(x, FUN(st_geometry(x), ...))` or the exact in-place equivalent). Added
+  `.sql_call_geom_replace()`, which rewrites just the one GEOMETRY-typed column's own SQL
+  expression in place -- leaving every other column, and row count, untouched -- and switched
+  these methods (and nothing else: accessors, measures, and predicates correctly still return a
+  bare, narrowed result, matching `sf`'s own convention there too) to use it.
+
 # DuckDBSpatial 0.99.16
 
 ## Bug fixes

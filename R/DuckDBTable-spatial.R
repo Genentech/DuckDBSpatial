@@ -605,20 +605,32 @@ hasGeometry <- function(x, geom = "geometry") {
     geom %in% names(types) && isTRUE(unname(types[[geom]]) == "geometry")
 }
 
+#' @importFrom DuckDBDataFrame coltypes
+.detect_geom_colname <- function(x, arg = "x") {
+    types <- coltypes(x)
+    geom <- names(types)[!is.na(types) & unname(types) == "geometry"]
+    if (length(geom) != 1L)
+        stop("'", arg, "' must have exactly one GEOMETRY column")
+    geom
+}
+
 #' @export
 #' @importFrom DuckDBDataFrame coltypes
 #' @importFrom sf st_geometry
 st_geometry.DuckDBTable <- function(obj, ...) {
-    types <- coltypes(obj)
-    geom <- names(types)[!is.na(types) & unname(types) == "geometry"]
-    if (length(geom) != 1L)
-        stop("'obj' must have exactly one GEOMETRY column")
-    obj[, geom, drop = FALSE]
+    obj[, .detect_geom_colname(obj, "obj"), drop = FALSE]
 }
 
 #' @importFrom DuckDBDataFrame sql_call
 .sql_call_geom <- function(x, fun, ...) {
     sql_call(st_geometry(x), fun, ...)
+}
+
+.sql_call_geom_replace <- function(x, fun, ...) {
+    geom <- .detect_geom_colname(x)
+    datacols <- x@datacols
+    datacols[[geom]] <- do.call("call", list(fun, datacols[[geom]], ...), quote = TRUE)
+    replaceSlots(x, datacols = datacols, check = FALSE)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -631,14 +643,6 @@ st_geometry.DuckDBTable <- function(obj, ...) {
 st_crs.DuckDBTable <- function(x, ..., geom = "geometry") {
     if (!hasGeometry(x, geom))
         stop("'", geom, "' is not a GEOMETRY column of 'x'")
-    # Splice x@datacols[[geom]]'s own expression (not as.name(geom)) so a
-    # renamed/derived geometry column still resolves correctly against the
-    # raw, pre-select/mutate conn that tblconn(select = FALSE) returns.
-    # FIRST() picking an arbitrary row is safe here (no ORDER BY needed)
-    # because DuckDB's spatial extension carries CRS as a logical-type-level
-    # property of a GEOMETRY column, not a per-row value: it refuses to even
-    # construct a column mixing two differently CRS-tagged values, and
-    # ST_CRS() is constant-folded to a single literal at plan time.
     aggr <- list(crs = call("FIRST", call("ST_CRS", x@datacols[[geom]])))
     res <- as.data.frame(summarize(tblconn(x, select = FALSE), !!!aggr))
     st_crs(res[["crs"]])
@@ -650,25 +654,13 @@ st_as_sfc.DuckDBTable <-
 function(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE, geom = "geometry") {
     if (!geom %in% names(x@datacols))
         stop("'", geom, "' is not a column of 'x'")
-    # Collect just the one requested column either way: routing the already-
-    # GEOMETRY-typed case through st_as_sf() (which parses every GEOMETRY
-    # column in x, not just this one) wasted real work on unrelated columns
-    # (e.g. a buffer column alongside a point column) for a result that only
-    # ever keeps the one sfc asked for.
     col <- as.data.frame(x[, geom, drop = FALSE], optional = TRUE)[[geom]]
     if (hasGeometry(x, geom)) {
         out <- .wkb_column_to_sfc(col, st_crs(x, geom = geom), ...)
-        # sf::st_as_sfc() lets an explicit, non-NA crs= override whatever CRS
-        # is already embedded in the input; match that instead of silently
-        # ignoring a caller-supplied crs on an already-GEOMETRY-typed column.
         if (!is.na(crs))
             st_crs(out) <- crs
         return(out)
     }
-    # Not yet GEOMETRY-typed (WKT/GeoJSON text, or a list of raw WKB): collect
-    # it as-is and hand off to plain sf's own parsers, rather than building a
-    # ST_GeomFromText/WKB/GeoJSON SQL cast just to immediately materialize
-    # the result anyway.
     if (isTRUE(WKB)) {
         .wkb_column_to_sfc(col, crs, ...)
     } else {
@@ -676,12 +668,6 @@ function(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE, geom = "geomet
     }
 }
 
-# A SQL-NULL geometry cell (GeoParquet explicitly permits these) materializes
-# via as.data.frame() as a bare NULL list element, not a zero-length raw
-# vector; st_as_sfc.WKB()'s vapply(x, is.raw, TRUE) check rejects a bare NULL,
-# and a zero-length raw vector errors too ("cannot read WKB object from
-# zero-length raw vector"). Substitute the real 9-byte GEOMETRYCOLLECTION
-# EMPTY WKB encoding, sf's own convention for a missing/empty geometry.
 #' @importFrom sf st_as_sfc
 .wkb_column_to_sfc <- function(col, crs, ...) {
     empty <- as.raw(c(0x01, 0x07, 0, 0, 0, 0, 0, 0, 0))
@@ -689,11 +675,6 @@ function(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE, geom = "geomet
     st_as_sfc(structure(col, class = "WKB"), ..., crs = crs)
 }
 
-# Mirrors .wkb_column_to_sfc() above, but for WKT/GeoJSON text: a bare NA in
-# a character vector makes sf::st_as_sfc.character()/.list() error outright
-# ("missing value where TRUE/FALSE needed") rather than tolerate it the way
-# the WKB path's bare-NULL substitution does; substitute the text form of an
-# empty geometry instead.
 #' @importFrom sf st_as_sfc
 .text_column_to_sfc <- function(col, crs, GeoJSON, ...) {
     empty <- if (isTRUE(GeoJSON))
@@ -710,16 +691,8 @@ function(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE, geom = "geomet
 st_as_sf.DuckDBTable <- function(x, ..., geom = "geometry") {
     if (!hasGeometry(x, geom))
         stop("'", geom, "' is not a GEOMETRY column of 'x'")
-    # Convert every GEOMETRY-typed column, not just 'geom': a DuckDBTable
-    # routinely carries more than one (e.g. a point column and a buffer
-    # column), and leaving the others as raw WKB lists is a silent footgun
-    # downstream (e.g. sf::st_write() will happily write opaque raw bytes
-    # into them with no error).
     types <- coltypes(x)
     geomcols <- names(types)[types == "geometry"]
-    # The duckdb R driver already returns a native GEOMETRY column as a list
-    # of raw WKB on collection (confirmed empirically), so no ST_AsWKB cast
-    # is needed before materializing; st_as_sfc() recognizes it directly.
     df <- as.data.frame(x, optional = TRUE)
     for (gc in geomcols) {
         df[[gc]] <- .wkb_column_to_sfc(df[[gc]], st_crs(x, geom = gc))
@@ -937,14 +910,14 @@ st_perimeter.DuckDBTable <- function(x, ...) {
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_boundary
 st_boundary.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_Boundary")
+    .sql_call_geom_replace(x, "ST_Boundary")
 }
 
 #' @exportS3Method sf::st_buffer
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_buffer
 st_buffer.DuckDBTable <- function(x, dist, ...) {
-    .sql_call_geom(x, "ST_Buffer", as.numeric(dist))
+    .sql_call_geom_replace(x, "ST_Buffer", as.numeric(dist))
 }
 
 #' @export
@@ -958,14 +931,14 @@ st_build_area.default <- function(x, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_build_area.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_BuildArea")
+    .sql_call_geom_replace(x, "ST_BuildArea")
 }
 
 #' @exportS3Method sf::st_centroid
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_centroid
 st_centroid.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_Centroid")
+    .sql_call_geom_replace(x, "ST_Centroid")
 }
 
 .collection_extract_type_to_int <- function(type) {
@@ -979,7 +952,7 @@ st_centroid.DuckDBTable <- function(x, ...) {
 st_collection_extract.DuckDBTable <-
 function(x, type = c("POLYGON", "POINT", "LINESTRING"), warn = FALSE, ...) {
     type_int <- .collection_extract_type_to_int(type)
-    .sql_call_geom(x, "ST_CollectionExtract", type_int)
+    .sql_call_geom_replace(x, "ST_CollectionExtract", type_int)
 }
 
 #' @exportS3Method sf::st_concave_hull
@@ -987,14 +960,14 @@ function(x, type = c("POLYGON", "POINT", "LINESTRING"), warn = FALSE, ...) {
 #' @importFrom sf st_concave_hull
 st_concave_hull.DuckDBTable <-
 function(x, ratio, ..., allow_holes = FALSE) {
-    .sql_call_geom(x, "ST_ConcaveHull", as.numeric(ratio), allow_holes)
+    .sql_call_geom_replace(x, "ST_ConcaveHull", as.numeric(ratio), allow_holes)
 }
 
 #' @exportS3Method sf::st_convex_hull
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_convex_hull
 st_convex_hull.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_ConvexHull")
+    .sql_call_geom_replace(x, "ST_ConvexHull")
 }
 
 #' @export
@@ -1003,14 +976,14 @@ st_envelope <- function(x, ...) UseMethod("st_envelope")
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_envelope.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_Envelope")
+    .sql_call_geom_replace(x, "ST_Envelope")
 }
 
 #' @exportS3Method sf::st_exterior_ring
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_exterior_ring
 st_exterior_ring.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_ExteriorRing")
+    .sql_call_geom_replace(x, "ST_ExteriorRing")
 }
 
 #' Apply a 2-D affine coordinate transform to geometries
@@ -1055,7 +1028,7 @@ st_affine.default <- function(x, affine, ...) {
 #' @importFrom DuckDBDataFrame sql_call
 st_affine.DuckDBTable <- function(x, affine, ...) {
     co <- .ctTo2DAffine(affine)
-    .sql_call_geom(x, "ST_Affine", co$a, co$b, co$d, co$e, co$xoff, co$yoff)
+    .sql_call_geom_replace(x, "ST_Affine", co$a, co$b, co$d, co$e, co$xoff, co$yoff)
 }
 
 #' @export
@@ -1069,7 +1042,7 @@ st_flip_coordinates.default <- function(x, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_flip_coordinates.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_FlipCoordinates")
+    .sql_call_geom_replace(x, "ST_FlipCoordinates")
 }
 
 #' @export
@@ -1081,19 +1054,17 @@ st_inscribed_circle <- function(x, ...) UseMethod("st_inscribed_circle")
 st_inscribed_circle.default <- function(x, ...) sf::st_inscribed_circle(x, ...)
 
 #' @export
-#' @importFrom S4Vectors endoapply
 st_inscribed_circle.DuckDBTable <-
 function(x, dTolerance, ..., nQuadSegs = 30) {
     stopifnot(!missing(dTolerance), is.numeric(dTolerance), length(dTolerance) == 1L)
     dtol <- as.numeric(dTolerance)
-    x <- st_geometry(x)
-    FUN <- function(j) {
-        mic <- call("ST_MaximumInscribedCircle", j, dtol)
-        center <- call("struct_extract", mic, "center")
-        radius <- call("struct_extract", mic, "radius")
-        call("ST_Buffer", center, radius)
-    }
-    datacols <- endoapply(x@datacols, FUN)
+    geom <- .detect_geom_colname(x)
+    datacols <- x@datacols
+    j <- datacols[[geom]]
+    mic <- call("ST_MaximumInscribedCircle", j, dtol)
+    center <- call("struct_extract", mic, "center")
+    radius <- call("struct_extract", mic, "radius")
+    datacols[[geom]] <- call("ST_Buffer", center, radius)
     replaceSlots(x, datacols = datacols, check = FALSE)
 }
 
@@ -1126,7 +1097,7 @@ function(line, dist, ..., normalized = FALSE) {
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_line_merge
 st_line_merge.DuckDBTable <- function(x, ..., directed = FALSE) {
-    .sql_call_geom(x, "ST_LineMerge", directed)
+    .sql_call_geom_replace(x, "ST_LineMerge", directed)
 }
 
 #' @export
@@ -1163,42 +1134,42 @@ st_line_substring.default <- function(line, start, end, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_line_substring.DuckDBTable <- function(line, start, end, ...) {
-    .sql_call_geom(line, "ST_LineSubstring", as.numeric(start), as.numeric(end))
+    .sql_call_geom_replace(line, "ST_LineSubstring", as.numeric(start), as.numeric(end))
 }
 
 #' @exportS3Method sf::st_make_valid
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_make_valid
 st_make_valid.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_MakeValid")
+    .sql_call_geom_replace(x, "ST_MakeValid")
 }
 
 #' @exportS3Method sf::st_minimum_rotated_rectangle
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_minimum_rotated_rectangle
 st_minimum_rotated_rectangle.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_MinimumRotatedRectangle")
+    .sql_call_geom_replace(x, "ST_MinimumRotatedRectangle")
 }
 
 #' @exportS3Method sf::st_node
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_node
 st_node.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_Node")
+    .sql_call_geom_replace(x, "ST_Node")
 }
 
 #' @exportS3Method sf::st_normalize
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_normalize
 st_normalize.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_Normalize")
+    .sql_call_geom_replace(x, "ST_Normalize")
 }
 
 #' @exportS3Method sf::st_point_on_surface
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_point_on_surface
 st_point_on_surface.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_PointOnSurface")
+    .sql_call_geom_replace(x, "ST_PointOnSurface")
 }
 
 #' @export
@@ -1212,7 +1183,7 @@ st_reduce_precision.default <- function(x, precision, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_reduce_precision.DuckDBTable <- function(x, precision, ...) {
-    .sql_call_geom(x, "ST_ReducePrecision", as.numeric(precision))
+    .sql_call_geom_replace(x, "ST_ReducePrecision", as.numeric(precision))
 }
 
 #' @export
@@ -1226,14 +1197,14 @@ st_remove_repeated_points.default <- function(x, ...) {
 #' @export
 #' @importFrom DuckDBDataFrame sql_call
 st_remove_repeated_points.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_RemoveRepeatedPoints")
+    .sql_call_geom_replace(x, "ST_RemoveRepeatedPoints")
 }
 
 #' @exportS3Method sf::st_reverse
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_reverse
 st_reverse.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_Reverse")
+    .sql_call_geom_replace(x, "ST_Reverse")
 }
 
 #' @exportS3Method sf::st_simplify
@@ -1243,14 +1214,14 @@ st_simplify.DuckDBTable <-
 function(x, preserveTopology = FALSE, dTolerance = 0.0, ...) {
     fun <- if (isTRUE(preserveTopology)) "ST_SimplifyPreserveTopology"
            else "ST_Simplify"
-    .sql_call_geom(x, fun, as.numeric(dTolerance))
+    .sql_call_geom_replace(x, fun, as.numeric(dTolerance))
 }
 
 #' @exportS3Method sf::st_voronoi
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_voronoi
 st_voronoi.DuckDBTable <- function(x, ...) {
-    .sql_call_geom(x, "ST_VoronoiDiagram")
+    .sql_call_geom_replace(x, "ST_VoronoiDiagram")
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1422,14 +1393,14 @@ st_within_properly.DuckDBTable <- function(x, y, ...) {
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_difference
 st_difference.DuckDBTable <- function(x, y, ...) {
-    .sql_call_geom(x, "ST_Difference", .geom_to_sql(y))
+    .sql_call_geom_replace(x, "ST_Difference", .geom_to_sql(y))
 }
 
 #' @exportS3Method sf::st_intersection
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_intersection
 st_intersection.DuckDBTable <- function(x, y, ...) {
-    .sql_call_geom(x, "ST_Intersection", .geom_to_sql(y))
+    .sql_call_geom_replace(x, "ST_Intersection", .geom_to_sql(y))
 }
 
 #' @exportS3Method sf::st_nearest_points
@@ -1446,7 +1417,7 @@ st_union.DuckDBTable <- function(x, y, ...) {
     if (missing(y))
         stop("'y' is required for st_union on DuckDBTable; ",
              "use st_union on DuckDBColumn for aggregate union")
-    .sql_call_geom(x, "ST_Union", .geom_to_sql(y))
+    .sql_call_geom_replace(x, "ST_Union", .geom_to_sql(y))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1532,8 +1503,6 @@ st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
     }
 }
 
-# Map an sf spatial-predicate function to its DuckDB ST_* function name, so
-# st_join() honors the `join` argument instead of always using ST_Intersects.
 .st_predicate_sql_name <- function(join) {
     preds <- c(
         st_intersects = "ST_Intersects", st_within = "ST_Within",
@@ -1564,18 +1533,6 @@ st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### WKT-vs-GEOMETRY schema probe for hand-built join SQL
 ###
-### .as_duckdb_table() below already detects and casts a WKT-text geometry
-### column, but only when uploading a fresh in-memory object for the first
-### time: it's a no-op for anything that's already a DuckDBTable/
-### DuckDBDataFrame. .spatialMatch_sql()/layerSpatialOverlaps() (both in
-### DuckDBDataFrame-spatial.R) and st_join_table()/st_join.DuckDBTable()
-### (below) build their SQL by hand and hit exactly that already-a-table
-### case: a plain WKT-text geometry column (e.g. from a CSV, or any
-### non-GeoParquet source) survives untouched into the join and DuckDB
-### rejects it at bind time ("No function matches the given name and
-### argument types 'ST_Intersects(GEOMETRY, VARCHAR)'"). These two helpers
-### probe the rendered SQL's own column type and cast only when needed.
-###
 
 #' @importFrom DBI dbGetQuery
 .geom_col_is_native <- function(conn, query_sql, colname) {
@@ -1584,9 +1541,6 @@ st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
                          colname_sql, query_sql)
     probed <- tryCatch(dbGetQuery(conn, probe_sql), error = function(e) NULL)
     if (is.null(probed) || nrow(probed) == 0L) {
-        # LIMIT 1 has nothing to evaluate typeof() against when the subquery
-        # is empty; fall back to a schema-only DESCRIBE (not data-dependent),
-        # the same technique DuckDBDataFrame's own coltypes() uses.
         probed <- tryCatch(dbGetQuery(conn, sprintf("DESCRIBE (%s)", query_sql)),
                            error = function(e) NULL)
         if (is.null(probed))
@@ -1597,17 +1551,10 @@ st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
     .is_geometry_type(probed[["__type__"]][1L])
 }
 
-# A GEOMETRY column round-tripped through GeoParquet carries its CRS as part
-# of the type itself (e.g. GEOMETRY('OGC:CRS84')), not just bare "GEOMETRY";
-# matches the same "^geometry(\\(.*\\))?$" pattern DuckDBDataFrame's own
-# coltypes()/.duckdb_container_type() uses to recognize either form.
 .is_geometry_type <- function(type) {
     !is.na(type) && grepl("^geometry(\\(.*\\))?$", tolower(type))
 }
 
-# Column reference ready to splice into hand-built SQL: the bare, optionally
-# table-prefixed, quoted column reference when it's already GEOMETRY-typed,
-# or an ST_GeomFromText() cast around it otherwise.
 .geom_col_sql_ref <- function(conn, query_sql, colname, prefix = NULL) {
     colname_sql <- gsub('"', '""', colname, fixed = TRUE)
     ref <- if (is.null(prefix)) sprintf('"%s"', colname_sql)
@@ -1659,10 +1606,6 @@ st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
     df[[geomcol]] <- st_as_text(sfc)
     tmp <- copy_to(conn, df, name = .duckdbspatial_tmp_counter(),
                    temporary = TRUE, overwrite = TRUE)
-    # Temp table is intentionally never dropped: the DuckDBDataFrame
-    # returned below stays a lazy, un-executed query over it, matching
-    # DuckDBArray::.duckdb_matmult_copy()'s same tradeoff (dropping here
-    # would break the result before anyone materializes it).
     geomcol_sql <- gsub('"', '""', geomcol, fixed = TRUE)
     cast <- setNames(list(sql(sprintf('ST_GeomFromText("%s")', geomcol_sql))), geomcol)
     tmp <- mutate(tmp, !!!cast)
@@ -1686,10 +1629,6 @@ st_join.DuckDBTable <- function(x, y, join = st_intersects, ...) {
     conn <- dbconn(x)
     x_q <- sql_render(tblconn(x, select = FALSE))
     y_q <- sql_render(tblconn(y, select = FALSE))
-    # x may already be a DuckDBTable (unlike y, never routed through
-    # .as_duckdb_table()'s WKT-detection-and-cast), so either side's
-    # "geometry" column may still be plain WKT text; probe and cast only
-    # the side(s) that need it.
     x_geom <- .geom_col_sql_ref(conn, x_q, "geometry", prefix = "x")
     y_geom <- .geom_col_sql_ref(conn, y_q, "geometry", prefix = "y")
     sql_txt <- sprintf(
@@ -1711,11 +1650,6 @@ st_join_table <- function(x, y, join = st_intersects, sparse = TRUE, ...) {
     conn <- dbconn(x)
     x_q <- sql_render(tblconn(x, select = FALSE))
     y_q <- sql_render(tblconn(y, select = FALSE))
-    # .as_duckdb_table() is a no-op for an 'x'/'y' that's already a
-    # DuckDBTable, so either side's "geometry" column may still be plain
-    # WKT text; probe and cast only the side(s) that need it. The
-    # row_number() wrapping below carries "geometry" through via SELECT *,
-    # so probing the unwrapped x_q/y_q still reflects the joined column.
     x_geom <- .geom_col_sql_ref(conn, x_q, "geometry", prefix = "x")
     y_geom <- .geom_col_sql_ref(conn, y_q, "geometry", prefix = "y")
     sql_txt <- sprintf(
