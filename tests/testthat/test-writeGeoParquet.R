@@ -182,3 +182,27 @@ test_that("writeGeoParquet with DataFrame and WKB column errors without sfc", {
         "cannot infer geometry types"
     )
 })
+
+test_that("writeGeoParquet marks 3D geometry types with a Z suffix", {
+    skip_if_not_installed("nanoparquet")
+    skip_if_not_installed("blob")
+    library(sf)
+
+    geo_types <- function(path) {
+        kvm <- nanoparquet::read_parquet_metadata(path)$file_meta_data$key_value_metadata[[1]]
+        geo <- jsonlite::fromJSON(kvm$value[kvm$key == "geo"], simplifyVector = FALSE)
+        unlist(geo$columns$geometry$geometry_types)
+    }
+
+    pts <- st_sf(id = 1:2, geometry = st_sfc(
+        st_point(c(0, 0, 1)), st_point(c(1, 1, 2)), crs = 4326))
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path))
+    DuckDBSpatial::writeGeoParquet(pts, path)
+    expect_identical(geo_types(path), "Point Z")
+
+    # appending 2D geometries keeps both the 3D and the 2D type
+    more <- st_sf(id = 3L, geometry = st_sfc(st_point(c(5, 5)), crs = 4326))
+    DuckDBSpatial::writeGeoParquet(more, path, append = TRUE)
+    expect_setequal(geo_types(path), c("Point Z", "Point"))
+})

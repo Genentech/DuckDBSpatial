@@ -2,8 +2,9 @@
 ### GeoParquet Helper Functions
 ###
 
-.geometryTypeToGeoParquet <- function(types) {
-    # Map sf geometry type names to GeoParquet 1.0 type names
+.geometryTypeToGeoParquet <- function(types, has_z = rep(FALSE, length(types))) {
+    # Map sf geometry type names to GeoParquet 1.0 type names; geometries with
+    # a Z coordinate get the spec's " Z" suffix (e.g. "Point Z")
     map <- c(POINT = "Point",
              LINESTRING = "LineString",
              POLYGON = "Polygon",
@@ -11,15 +12,21 @@
              MULTILINESTRING = "MultiLineString",
              MULTIPOLYGON = "MultiPolygon",
              GEOMETRYCOLLECTION = "GeometryCollection")
-    u <- unique(toupper(types))
-    u <- u[nzchar(u)]
-    if (length(u) == 0L) {
+    types <- toupper(types)
+    keep <- nzchar(types)
+    if (!any(keep)) {
         "GeometryCollection"
     } else {
-        out <- map[u]
+        out <- map[types[keep]]
         out[is.na(out)] <- "GeometryCollection"
+        out <- paste0(out, ifelse(has_z[keep], " Z", ""))
         unique(as.character(out))
     }
+}
+
+# Whether each geometry of an sfc has a Z coordinate
+.sfcHasZ <- function(sfc) {
+    vapply(sfc, function(g) inherits(g, c("XYZ", "XYZM")), NA)
 }
 
 #' @importFrom sf st_bbox st_crs st_geometry_type
@@ -30,7 +37,7 @@
              "install with install.packages('jsonlite')")
 
     types <- as.character(st_geometry_type(sfc))
-    geometry_types <- .geometryTypeToGeoParquet(types)
+    geometry_types <- .geometryTypeToGeoParquet(types, .sfcHasZ(sfc))
 
     col_spec <- list(encoding = "WKB",
                      geometry_types = as.list(geometry_types))
@@ -92,7 +99,8 @@
              "reproject 'x' to match before appending")
 
     old_types <- unlist(old_spec[["geometry_types"]])
-    new_types <- .geometryTypeToGeoParquet(as.character(st_geometry_type(sfc)))
+    new_types <- .geometryTypeToGeoParquet(as.character(st_geometry_type(sfc)),
+                                           .sfcHasZ(sfc))
     old_spec[["geometry_types"]] <- as.list(unique(c(old_types, new_types)))
 
     old_bbox <- old_spec[["bbox"]]

@@ -1,3 +1,16 @@
+# DuckDBSpatial 0.99.18
+
+## Bug fixes
+
+- `writeGeoParquet()` never added the GeoParquet spec's required `" Z"` suffix (e.g.
+  `"Point Z"`) to a 3D geometry's type in the written file's `geo` metadata, so readers like
+  GDAL/OGR had no way to know a column had a Z coordinate without scanning every geometry.
+  `.geometryTypeToGeoParquet()` now classifies each geometry individually (by type and whether it
+  carries a Z coordinate, via a new `.sfcHasZ()` helper) before deduplicating, so a column mixing
+  3D and 2D geometries of the same base type (e.g. after `writeGeoParquet(..., append = TRUE)`)
+  correctly lists both `"Point Z"` and `"Point"`. Thanks to @buyan-kh for the fix and tests
+  (#2, fixing #1).
+
 # DuckDBSpatial 0.99.17
 
 ## Bug fixes
