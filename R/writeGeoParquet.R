@@ -49,18 +49,19 @@
         col_spec[["bbox"]] <- as.list(bbox)
     }
 
-    # Emit the CRS so a reader does not fall back to the spec default of
-    # OGC:CRS84 (WGS84 lon/lat). The GeoParquet 1.0.0 spec requires "crs" to
-    # be a PROJJSON object, not a WKT string, so it's parsed back into a list
-    # here for jsonlite::toJSON() to re-embed as a nested JSON object rather
-    # than a JSON-encoded string. A genuinely unknown CRS, or one PROJJSON
-    # can't represent, is left out (the WGS84 default then applies).
+    # A missing "crs" key means OGC:CRS84 (WGS84 lon/lat) to a reader; the spec
+    # spells "unknown" as an explicit `"crs": null`. The CRS must be a PROJJSON
+    # object, not a WKT string, so it's parsed back into a list for
+    # jsonlite::toJSON() to re-embed as a nested object. An unknown CRS, or one
+    # PROJJSON can't represent, is written as null rather than mislabeled WGS84.
     crs <- st_crs(sfc)
-    if (!is.na(crs)) {
-        projjson <- tryCatch(wk_crs_projjson(crs), error = function(e) NULL)
-        if (!is.null(projjson)) {
-            col_spec[["crs"]] <- jsonlite::fromJSON(projjson, simplifyVector = FALSE)
-        }
+    projjson <- if (!is.na(crs)) {
+        tryCatch(wk_crs_projjson(crs), error = function(e) NULL)
+    }
+    if (is.null(projjson)) {
+        col_spec["crs"] <- list(NULL)
+    } else {
+        col_spec[["crs"]] <- jsonlite::fromJSON(projjson, simplifyVector = FALSE)
     }
 
     meta <- list(version = "1.0.0",
@@ -69,7 +70,8 @@
     # digits = NA: jsonlite::toJSON() defaults to 4 significant digits, which
     # silently truncates the embedded CRS's ellipsoid parameters (e.g. WGS84's
     # inverse_flattening 298.257223563 -> 298.2572) and bbox coordinates.
-    jsonlite::toJSON(meta, auto_unbox = TRUE, digits = NA)
+    # null = "null": the default would write a NULL "crs" as `[{}]`.
+    jsonlite::toJSON(meta, auto_unbox = TRUE, digits = NA, null = "null")
 }
 
 #' @importFrom sf st_crs
@@ -87,8 +89,11 @@
     if (is.null(old_spec))
         stop("'", path, "' has no GeoParquet metadata for column '", geom, "'")
 
-    old_crs <- if (is.null(old_spec[["crs"]])) {
+    # Absent key is the spec default (CRS84); an explicit null is "unknown".
+    old_crs <- if (!"crs" %in% names(old_spec)) {
         st_crs("OGC:CRS84")
+    } else if (is.null(old_spec[["crs"]])) {
+        st_crs(NA)
     } else {
         st_crs(as.character(jsonlite::toJSON(old_spec[["crs"]], auto_unbox = TRUE,
                                              digits = NA)))
@@ -117,7 +122,7 @@
     }
 
     old_meta[["columns"]][[geom]] <- old_spec
-    jsonlite::toJSON(old_meta, auto_unbox = TRUE, digits = NA)
+    jsonlite::toJSON(old_meta, auto_unbox = TRUE, digits = NA, null = "null")
 }
 
 #' Write spatial data as GeoParquet
@@ -148,7 +153,9 @@
 #'   been written by \code{writeGeoParquet()}, possibly in an earlier
 #'   \code{append = TRUE} call); the \code{geo} metadata (geometry types,
 #'   bounding box, CRS) is then updated in place to cover the combined file.
-#'   The CRS of \code{x} must match the existing file's CRS; appending to a
+#'   The CRS of \code{x} must match the existing file's CRS (an unknown
+#'   \code{NA} CRS is written as an explicit \code{"crs": null}, so a known
+#'   CRS cannot be appended to it); appending to a
 #'   multi-part/hive-partitioned layout is not supported. Like
 #'   \code{append_parquet()} itself, this is \strong{not atomic}: an
 #'   interrupted append can leave \code{path} corrupt.

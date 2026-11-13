@@ -762,8 +762,8 @@ test_that("st_as_sf materializes one feature per row, not a combined geometry", 
     expect_identical(sfobj$id, pts$id)
     expect_true(st_crs(sfobj) == st_crs(4326))
 
-    # No explicit CRS at write time still round-trips to a (spec-default)
-    # CRS, not NA, and the geometry itself is unaffected either way.
+    # No explicit CRS at write time round-trips as an unknown (NA) CRS, not
+    # the spec's OGC:CRS84 default, and the geometry itself is unaffected.
     pts_nocrs <- st_sf(geometry = st_sample(
         st_bbox(c(xmin = 0, xmax = 1, ymin = 0, ymax = 1)), 3))
     path2 <- tempfile(fileext = ".parquet")
@@ -771,7 +771,7 @@ test_that("st_as_sf materializes one feature per row, not a combined geometry", 
     writeGeoParquet(pts_nocrs, path2)
     ddb2 <- readGeoParquet(path2)
     sfobj2 <- st_as_sf(ddb2)
-    expect_false(is.na(st_crs(sfobj2)))
+    expect_true(is.na(st_crs(sfobj2)))
     expect_identical(st_as_text(sfobj2$geometry), st_as_text(pts_nocrs$geometry))
 
     expect_error(st_as_sf(DuckDBDataFrame(path)[, "id", drop = FALSE]),

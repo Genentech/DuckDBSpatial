@@ -66,6 +66,68 @@ test_that("writeGeoParquet records the CRS and omits an unknown bbox", {
     expect_null(geo2$columns$geometry$bbox)
 })
 
+test_that("writeGeoParquet writes an explicit null crs for an unknown CRS", {
+    skip_if_not_installed("nanoparquet")
+    library(sf)
+
+    pts <- st_sf(id = 1:2, geometry = st_sfc(st_point(0:1), st_point(2:3)))
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path))
+    DuckDBSpatial::writeGeoParquet(pts, path)
+
+    # A missing "crs" key means OGC:CRS84 to a reader; only an explicit null
+    # means unknown.
+    kvm <- nanoparquet::read_parquet_metadata(path)$file_meta_data$key_value_metadata[[1]]
+    geo_json <- kvm$value[kvm$key == "geo"]
+    expect_match(geo_json, "\"crs\":null", fixed = TRUE)
+    cs <- jsonlite::fromJSON(geo_json, simplifyVector = FALSE)$columns$geometry
+    expect_true("crs" %in% names(cs))
+    expect_null(cs$crs)
+})
+
+test_that("an unknown CRS survives a writeGeoParquet/readGeoParquet round trip", {
+    skip_if_not_installed("nanoparquet")
+    library(sf)
+
+    pts <- st_sf(id = 1:3, geometry = st_sfc(
+        st_point(c(0, 0)), st_point(c(1, 0.5)), st_point(c(0.25, 1))))
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path))
+    DuckDBSpatial::writeGeoParquet(pts, path)
+    expect_true(is.na(st_crs(readGeoParquet(path))))
+
+    pts4326 <- st_set_crs(pts, 4326)
+    path2 <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path2), add = TRUE)
+    DuckDBSpatial::writeGeoParquet(pts4326, path2)
+    expect_identical(st_crs(readGeoParquet(path2))$input, "EPSG:4326")
+})
+
+test_that("writeGeoParquet append = TRUE keeps an unknown CRS and rejects a known one", {
+    skip_if_not_installed("nanoparquet")
+    skip_if_not_installed("blob")
+    library(sf)
+
+    pts1 <- st_sf(id = 1L, geometry = st_sfc(st_point(0:1)))
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path))
+    DuckDBSpatial::writeGeoParquet(pts1, path)
+
+    pts2 <- st_sf(id = 2L, geometry = st_sfc(st_point(1:2)))
+    DuckDBSpatial::writeGeoParquet(pts2, path, append = TRUE)
+    kvm <- nanoparquet::read_parquet_metadata(path)$file_meta_data$key_value_metadata[[1]]
+    cs <- jsonlite::fromJSON(kvm$value[kvm$key == "geo"], simplifyVector = FALSE)$columns$geometry
+    expect_true("crs" %in% names(cs))
+    expect_null(cs$crs)
+    expect_true(is.na(st_crs(readGeoParquet(path))))
+
+    pts3 <- st_sf(id = 3L, geometry = st_sfc(st_point(c(2, 3)), crs = 4326))
+    expect_error(
+        DuckDBSpatial::writeGeoParquet(pts3, path, append = TRUE),
+        "CRS of 'x' does not match"
+    )
+})
+
 test_that("writeGeoParquet round-trip for POLYGON", {
     skip_if_not_installed("nanoparquet")
     library(sf)

@@ -1,3 +1,19 @@
+# DuckDBSpatial 0.99.19
+
+## Bug fixes
+
+- `writeGeoParquet()` omitted the `crs` key from a column's `geo` metadata when `st_crs(x)` was
+  `NA`. The GeoParquet spec treats a missing `crs` as OGC:CRS84 (WGS84 lon/lat) and spells
+  "unknown" as an explicit `"crs": null`, so `readGeoParquet()` (and any other reader) labeled
+  coordinates with no CRS, such as spatial omics images or tissue slides, as longitude/latitude,
+  which then altered axes in plots and geometric operations. An unknown CRS, or one PROJJSON
+  cannot represent, is now written as `"crs": null` and reads back as `NA`; the
+  `append = TRUE` CRS check likewise distinguishes a missing key from an explicit null, so a known
+  CRS can no longer be appended to a file whose CRS is unknown. Files written by earlier
+  versions carry no `crs` key and still read as OGC:CRS84, which is indistinguishable from an
+  intentional CRS84; rewrite them to correct it. Thanks to Lambda Moses for the report and
+  reprex.
+
 # DuckDBSpatial 0.99.18
 
 ## Bug fixes

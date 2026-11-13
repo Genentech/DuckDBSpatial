@@ -39,7 +39,9 @@ to an existing GeoParquet file at \code{path} via
 been written by \code{writeGeoParquet()}, possibly in an earlier
 \code{append = TRUE} call); the \code{geo} metadata (geometry types,
 bounding box, CRS) is then updated in place to cover the combined file.
-The CRS of \code{x} must match the existing file's CRS; appending to a
+The CRS of \code{x} must match the existing file's CRS (an unknown
+\code{NA} CRS is written as an explicit \code{"crs": null}, so a known
+CRS cannot be appended to it); appending to a
 multi-part/hive-partitioned layout is not supported. Like
 \code{append_parquet()} itself, this is \strong{not atomic}: an
 interrupted append can leave \code{path} corrupt.}
