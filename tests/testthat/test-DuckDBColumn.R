@@ -134,7 +134,7 @@ test_that("Spatial unary operations work as expected for a DuckDBColumn", {
                         "POLYGON ((10 30, 40 40, 40 20, 20 10, 10 30))",
                         "POLYGON ((10 35, 45 45, 40 15, 20 10, 10 35), (30 20, 35 35, 20 30, 30 20))",
                         "POLYGON EMPTY"))
-    checkDuckDBColumn(st_reduce_precision(st_inscribed_circle(x[12L], 0.01), 1),
+    checkDuckDBColumn(st_reduce_precision(st_inscribed_circle(x[9L], 0.01), 1),
                       "POLYGON ((34 23, 34 21, 33 19, 31 17, 30 16, 28 15, 26 14, 24 14, 22 14, 20 15, 18 16, 17 17, 15 19, 14 21, 14 23, 14 25, 14 27, 14 29, 15 30, 17 32, 18 33, 20 34, 22 35, 24 35, 26 35, 28 34, 30 33, 31 32, 33 30, 34 29, 34 27, 34 25, 34 23))")
     checkDuckDBColumn(st_line_interpolate(df[df$type == "linestring", "geometry"][1], 5, normalized = FALSE),
                       st_line_interpolate(sfc[1], 5, normalized = FALSE))
