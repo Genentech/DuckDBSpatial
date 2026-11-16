@@ -1,3 +1,21 @@
+# DuckDBSpatial 0.99.20
+
+## New features
+
+- `st_bbox()` and `st_coordinates()` now work on a `DuckDBTable` or
+  `DuckDBDataFrame`, as they do on an `sf` data frame, where before only a
+  `DuckDBColumn` was supported. They act on the table's only `GEOMETRY` column,
+  or on the one named by the new `geom` argument, and like the other table
+  methods they stop if there is more than one and `geom` is not given.
+  `st_coordinates()` returns just the coordinate columns.
+
+## Bug fixes
+
+- `st_bbox()` on a `DuckDBColumn` dropped the CRS: the `bbox` it returned had
+  no `crs` attribute, so a geometry in EPSG:4326 gave a `bbox` whose CRS was
+  `NA`, unlike `sf`. The CRS is now read in the same query and attached, so
+  functions that use it, such as `st_as_sfc()` on the `bbox`, keep it.
+
 # DuckDBSpatial 0.99.19
 
 ## Bug fixes

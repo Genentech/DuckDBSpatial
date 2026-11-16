@@ -5,6 +5,8 @@
 \alias{st_as_sfc.DuckDBTable}
 \alias{hasGeometry}
 \alias{st_crs.DuckDBTable}
+\alias{st_bbox.DuckDBTable}
+\alias{st_coordinates.DuckDBTable}
 \alias{st_as_sf.DuckDBTable}
 \alias{st_as_binary.DuckDBTable}
 \alias{st_as_text.DuckDBTable}
@@ -247,6 +249,16 @@ hijacked \pkg{sf} generic name: \code{sql_call(x, "ST_GeomFromText")} (or
 \describe{
   \item{\code{st_crs(x, geom = "geometry")}:}{
     The CRS of column \code{geom}, via \code{ST_CRS}.
+  }
+  \item{\code{st_bbox(obj, geom = NULL)}:}{
+    The \code{bbox} of a geometry column, as for a \code{DuckDBColumn}.
+    \code{geom} names the column; by default it is the table's only
+    \code{GEOMETRY} column.
+  }
+  \item{\code{st_coordinates(x, geom = NULL)}:}{
+    A \code{DuckDBDataFrame} with the X, Y (and Z, M when present)
+    coordinate columns of a geometry column, as for a
+    \code{DuckDBColumn}. \code{geom} is as for \code{st_bbox()}.
   }
   \item{\code{st_as_sfc(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE, geom = "geometry")}:}{
     Collects column \code{geom} into an in-memory \code{\link[sf]{sfc}},

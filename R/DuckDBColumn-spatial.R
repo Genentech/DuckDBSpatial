@@ -234,7 +234,8 @@
 #'   \item{\code{st_bbox(obj)}:}{
 #'     Returns a \code{bbox} named numeric vector
 #'     \code{c(xmin, ymin, xmax, ymax)} via \code{MIN}/\code{MAX}
-#'     of \code{ST_XMin}/\code{ST_YMin}/\code{ST_XMax}/\code{ST_YMax}.
+#'     of \code{ST_XMin}/\code{ST_YMin}/\code{ST_XMax}/\code{ST_YMax},
+#'     with the column's CRS as its \code{crs} attribute, as in \pkg{sf}.
 #'   }
 #'   \item{\code{st_collect(x)}:}{
 #'     Returns an \code{sfc} GEOMETRYCOLLECTION via \code{ST_Collect}.
@@ -383,14 +384,18 @@ st_as_text.DuckDBColumn <- function(x, ..., geojson = FALSE) {
 #' @importFrom DuckDBDataFrame DuckDBDataFrame tblconn
 #' @importFrom sf st_coordinates
 st_coordinates.DuckDBColumn <- function(x, ...) {
-    table <- x@table
+    .coordinates_of(x@table)
+}
+
+# 'table' is a DuckDBTable whose first datacol is the geometry
+.coordinates_of <- function(table) {
     datacols <- table@datacols
     point <- datacols[[1L]]
 
     # Determine if Z and M dimensions are present
     aggr <- list(z = call("MAX", call("ST_HasZ", point)),
                  m = call("MAX", call("ST_HasM", point)))
-    has <- as.data.frame(summarize(tblconn(x, select = FALSE), !!!aggr))
+    has <- as.data.frame(summarize(tblconn(table, select = FALSE), !!!aggr))
 
     # Construct dimension columns
     datacols <- datacols[-1L]
@@ -771,20 +776,25 @@ st_union.DuckDBColumn <- function(x, y, ...) {
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom sf st_bbox
 st_bbox.DuckDBColumn <- function(obj, ...) {
-    table <- obj@table
+    .bbox_of(obj@table)
+}
+
+# 'table' is a DuckDBTable whose first datacol is the geometry
+.bbox_of <- function(table) {
     geom <- table@datacols[[1L]]
     aggr <- list(
         xmin = call("MIN", call("ST_XMin", geom)),
         ymin = call("MIN", call("ST_YMin", geom)),
         xmax = call("MAX", call("ST_XMax", geom)),
-        ymax = call("MAX", call("ST_YMax", geom))
+        ymax = call("MAX", call("ST_YMax", geom)),
+        crs = call("FIRST", call("ST_CRS", geom))
     )
     res <- as.data.frame(dplyr::summarize(
-        tblconn(obj, select = FALSE), !!!aggr))
+        tblconn(table, select = FALSE), !!!aggr))
     structure(
         c(xmin = res$xmin, ymin = res$ymin,
           xmax = res$xmax, ymax = res$ymax),
-        class = "bbox"
+        class = "bbox", crs = st_crs(res$crs)
     )
 }
 

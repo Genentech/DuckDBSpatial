@@ -121,3 +121,43 @@ test_that("chained Group A calls compose correctly on a derived geometry column"
     expect_false(isTRUE(all.equal(.geom_wkt(chained), .geom_wkt(df))))
     expect_false(isTRUE(all.equal(.geom_wkt(chained), .geom_wkt(st_buffer(df, 1)))))
 })
+
+test_that("st_bbox and st_coordinates on a DuckDBTable match sf and keep the CRS", {
+    skip_if_not_installed("nanoparquet")
+    pts <- st_sf(id = 1:4, val = c(1.5, 2.5, 3.5, 4.5), geometry = st_sfc(
+        st_point(c(1, 2)), st_point(c(5, 9)), st_point(c(3, 4)), st_point(c(-2, 7)),
+        crs = 4326))
+    path <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path), add = TRUE)
+    writeGeoParquet(pts, path)
+    ddf <- readGeoParquet(path)
+
+    # the table and its geometry column both agree with sf, CRS included
+    for (b in list(st_bbox(ddf), st_bbox(ddf[["geometry"]]))) {
+        expect_s3_class(b, "bbox")
+        expect_equal(as.numeric(b), as.numeric(st_bbox(pts)))
+        expect_equal(st_crs(b), st_crs(pts))
+    }
+
+    # an unknown CRS stays unknown
+    pts_na <- pts
+    st_crs(pts_na) <- NA
+    path_na <- tempfile(fileext = ".parquet")
+    on.exit(unlink(path_na), add = TRUE)
+    writeGeoParquet(pts_na, path_na)
+    expect_true(is.na(st_crs(st_bbox(readGeoParquet(path_na)))))
+
+    # only the coordinates come back, as for an sf data frame
+    xy <- as.data.frame(st_coordinates(ddf))
+    expect_identical(names(xy), c("X", "Y"))
+    expect_equal(xy$X, unname(st_coordinates(pts)[, "X"]))
+    expect_equal(xy$Y, unname(st_coordinates(pts)[, "Y"]))
+
+    # 'geom' picks the column when there is more than one
+    two <- cbind(ddf, geom2 = ddf[["geometry"]])
+    expect_error(st_bbox(two), "exactly one GEOMETRY")
+    expect_error(st_coordinates(two), "exactly one GEOMETRY")
+    expect_equal(as.numeric(st_bbox(two, geom = "geom2")), as.numeric(st_bbox(pts)))
+    expect_equal(as.data.frame(st_coordinates(two, geom = "geom2"))$X, xy$X)
+    expect_error(st_bbox(two, geom = "id"), "not a GEOMETRY column")
+})

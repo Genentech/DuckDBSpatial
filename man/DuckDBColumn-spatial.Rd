@@ -320,7 +320,8 @@ These methods materialise and return concrete R objects.
   \item{\code{st_bbox(obj)}:}{
     Returns a \code{bbox} named numeric vector
     \code{c(xmin, ymin, xmax, ymax)} via \code{MIN}/\code{MAX}
-    of \code{ST_XMin}/\code{ST_YMin}/\code{ST_XMax}/\code{ST_YMax}.
+    of \code{ST_XMin}/\code{ST_YMin}/\code{ST_XMax}/\code{ST_YMax},
+    with the column's CRS as its \code{crs} attribute, as in \pkg{sf}.
   }
   \item{\code{st_collect(x)}:}{
     Returns an \code{sfc} GEOMETRYCOLLECTION via \code{ST_Collect}.

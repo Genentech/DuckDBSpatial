@@ -49,6 +49,16 @@
 #'   \item{\code{st_crs(x, geom = "geometry")}:}{
 #'     The CRS of column \code{geom}, via \code{ST_CRS}.
 #'   }
+#'   \item{\code{st_bbox(obj, geom = NULL)}:}{
+#'     The \code{bbox} of a geometry column, as for a \code{DuckDBColumn}.
+#'     \code{geom} names the column; by default it is the table's only
+#'     \code{GEOMETRY} column.
+#'   }
+#'   \item{\code{st_coordinates(x, geom = NULL)}:}{
+#'     A \code{DuckDBDataFrame} with the X, Y (and Z, M when present)
+#'     coordinate columns of a geometry column, as for a
+#'     \code{DuckDBColumn}. \code{geom} is as for \code{st_bbox()}.
+#'   }
 #'   \item{\code{st_as_sfc(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE, geom = "geometry")}:}{
 #'     Collects column \code{geom} into an in-memory \code{\link[sf]{sfc}},
 #'     tagged with its \code{st_crs()} unless overridden by an explicit,
@@ -358,6 +368,8 @@
 #' @aliases hasGeometry
 #'
 #' @aliases st_crs.DuckDBTable
+#' @aliases st_bbox.DuckDBTable
+#' @aliases st_coordinates.DuckDBTable
 #' @aliases st_as_sf.DuckDBTable
 #'
 #' @aliases st_as_binary.DuckDBTable
@@ -646,6 +658,29 @@ st_crs.DuckDBTable <- function(x, ..., geom = "geometry") {
     aggr <- list(crs = call("FIRST", call("ST_CRS", x@datacols[[geom]])))
     res <- as.data.frame(summarize(tblconn(x, select = FALSE), !!!aggr))
     st_crs(res[["crs"]])
+}
+
+# The one-geometry-column table that 'geom' (default: the only GEOMETRY
+# column) selects from 'x'.
+.geometry_table <- function(x, geom, arg) {
+    if (is.null(geom)) {
+        geom <- .detect_geom_colname(x, arg)
+    } else if (!hasGeometry(x, geom)) {
+        stop("'", geom, "' is not a GEOMETRY column of '", arg, "'")
+    }
+    x[, geom, drop = FALSE]
+}
+
+#' @exportS3Method sf::st_bbox
+#' @importFrom sf st_bbox
+st_bbox.DuckDBTable <- function(obj, ..., geom = NULL) {
+    .bbox_of(.geometry_table(obj, geom, "obj"))
+}
+
+#' @exportS3Method sf::st_coordinates
+#' @importFrom sf st_coordinates
+st_coordinates.DuckDBTable <- function(x, ..., geom = NULL) {
+    .coordinates_of(.geometry_table(x, geom, "x"))
 }
 
 #' @exportS3Method sf::st_as_sfc
