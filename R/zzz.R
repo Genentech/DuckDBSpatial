@@ -12,10 +12,26 @@
 # `spatial.duckdb_extension` under `DUCKDB_EXTENSION_DIRECTORY`, or point
 # `BIOCDUCKDB_EXTENSION_REPOSITORY` at a reachable mirror.
 
+# DuckDB 2.0 refuses ST_Transform and the spheroid functions until
+# 'geometry_always_xy' is set, because the axis order of a CRS (northing first
+# for some) would otherwise decide what a coordinate pair means. Coordinates
+# here are always (x, y), which is what the setting says and what DuckDB 2.1
+# makes the default, so it is set once on the shared connection.
+#' @importFrom DBI dbExecute dbGetQuery
+.setAlwaysXY <- function(conn) {
+    known <- dbGetQuery(conn, paste("SELECT 1 FROM duckdb_settings()",
+                                    "WHERE name = 'geometry_always_xy'"))
+    if (nrow(known))
+        dbExecute(conn, "SET geometry_always_xy = true")
+    invisible(NULL)
+}
+
 #' @importFrom DuckDBDataFrame acquireDuckDBConn loadExtension
 .onLoad <- function(libname, pkgname) {
-    suppressWarnings(suppressMessages(tryCatch(
-        loadExtension(acquireDuckDBConn(), "spatial", optional = TRUE),
-        error = function(e) invisible(NULL)
+    suppressWarnings(suppressMessages(tryCatch({
+        conn <- acquireDuckDBConn()
+        loadExtension(conn, "spatial", optional = TRUE)
+        .setAlwaysXY(conn)
+    }, error = function(e) invisible(NULL)
     )))
 }

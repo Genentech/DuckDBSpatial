@@ -225,7 +225,7 @@
 #'
 #' @export
 #' @importFrom S4Vectors isTRUEorFALSE
-#' @importFrom sf st_as_binary st_as_sfc st_geometry
+#' @importFrom sf st_as_binary st_as_sf st_as_sfc st_geometry
 writeGeoParquet <-
 function(x, path, geom = "geometry", compression = "zstd",
          options = nanoparquet::parquet_options(compression_level = 3L),
@@ -239,6 +239,9 @@ function(x, path, geom = "geometry", compression = "zstd",
     if (isTRUE(append) && !file.exists(path))
         stop("'append = TRUE' but '", path, "' does not exist; ",
              "write it first with 'append = FALSE'")
+
+    if (is(x, "DuckDBTable") && hasGeometry(x, geom))
+        x <- st_as_sf(x, geom = geom)
 
     if (inherits(x, "sf")) {
         df <- as.data.frame(x, optional = TRUE)

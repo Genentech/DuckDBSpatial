@@ -57,7 +57,9 @@
 #'   \item{\code{st_coordinates(x, geom = NULL)}:}{
 #'     A \code{DuckDBDataFrame} with the X, Y (and Z, M when present)
 #'     coordinate columns of a geometry column, as for a
-#'     \code{DuckDBColumn}. \code{geom} is as for \code{st_bbox()}.
+#'     \code{DuckDBColumn}. \code{geom} is as for \code{st_bbox()}. Only
+#'     point geometries have coordinates here: for lines and polygons DuckDB
+#'     stops with an error, where \code{sf} returns every vertex.
 #'   }
 #'   \item{\code{st_as_sfc(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE, geom = "geometry")}:}{
 #'     Collects column \code{geom} into an in-memory \code{\link[sf]{sfc}},
@@ -546,6 +548,9 @@ replaceSlots <- BiocGenerics:::replaceSlots
 ###
 
 #' @importFrom sf st_as_text
+.wkt <- function(x) st_as_text(x, digits = 17L)
+
+#' @importFrom sf st_as_text
 #' @importFrom dplyr sql
 .geom_to_sql <- function(y) {
     if (inherits(y, "sql"))
@@ -555,13 +560,13 @@ replaceSlots <- BiocGenerics:::replaceSlots
     if (is.character(y))
         return(sql(sprintf("ST_GeomFromText('%s')", y)))
     if (inherits(y, "sfg"))
-        return(sql(sprintf("ST_GeomFromText('%s')", sf::st_as_text(y))))
+        return(sql(sprintf("ST_GeomFromText('%s')", .wkt(y))))
     if (inherits(y, "sfc")) {
         if (length(y) != 1L)
             stop("'y' must be a single geometry (sfc of length 1); use ",
                  "layerSpatialMatch(), st_join(), or st_join_table() to ",
                  "match against multiple features instead")
-        return(sql(sprintf("ST_GeomFromText('%s')", sf::st_as_text(y[[1L]]))))
+        return(sql(sprintf("ST_GeomFromText('%s')", .wkt(y[[1L]]))))
     }
     if (is(y, "DuckDBTable") || is.data.frame(y))
         stop("'y' is a table with multiple features, not a single ",
@@ -624,6 +629,13 @@ hasGeometry <- function(x, geom = "geometry") {
     if (length(geom) != 1L)
         stop("'", arg, "' must have exactly one GEOMETRY column")
     geom
+}
+
+#' @importFrom DuckDBDataFrame coltypes
+.geom_colname <- function(x, default = "geometry") {
+    types <- coltypes(x)
+    geom <- names(types)[!is.na(types) & unname(types) == "geometry"]
+    if (length(geom) == 1L) geom else default
 }
 
 #' @export
@@ -705,6 +717,8 @@ function(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE, geom = "geomet
 
 #' @importFrom sf st_as_sfc
 .wkb_column_to_sfc <- function(col, crs, ...) {
+    if (inherits(col, "wk_wkb"))
+        col <- unclass(col)
     empty <- as.raw(c(0x01, 0x07, 0, 0, 0, 0, 0, 0, 0))
     col[vapply(col, is.null, NA)] <- list(empty)
     st_as_sfc(structure(col, class = "WKB"), ..., crs = crs)
@@ -1507,8 +1521,9 @@ st_intersects_table <- function(x, y, sparse = TRUE, ...) {
     sql_txt <- sprintf(
         paste0("SELECT row_number() OVER () AS id_x, t.__rowid__ AS id_y ",
                "FROM (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) t ",
-               "WHERE ST_Intersects(t.geometry, %s)"),
-        x_q, as.character(y_sql))
+               "WHERE ST_Intersects(t.\"%s\", %s)"),
+        x_q, gsub('"', '""', .geom_colname(x), fixed = TRUE),
+        as.character(y_sql))
     if (isTRUE(sparse)) {
         .lazy_sql_ddf(conn, sql_txt)
     } else {
@@ -1524,7 +1539,7 @@ st_intersects_table <- function(x, y, sparse = TRUE, ...) {
 #' @exportS3Method sf::st_filter
 #' @importFrom sf st_filter st_intersects
 st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
-    geom <- x[["geometry"]]
+    geom <- x[[.geom_colname(x)]]
     hits <- .predicate(geom, y, ...)
     if (is(hits, "DuckDBColumn")) {
         x[hits, , drop = FALSE]
@@ -1638,7 +1653,7 @@ st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
                  "'geometry' column is an 'sfc' or a list of raw WKB")
         }
     }
-    df[[geomcol]] <- st_as_text(sfc)
+    df[[geomcol]] <- .wkt(sfc)
     tmp <- copy_to(conn, df, name = .duckdbspatial_tmp_counter(),
                    temporary = TRUE, overwrite = TRUE)
     geomcol_sql <- gsub('"', '""', geomcol, fixed = TRUE)
@@ -1653,22 +1668,45 @@ st_filter.DuckDBTable <- function(x, y, ..., .predicate = st_intersects) {
 #' @param y A \code{DuckDBTable}/\code{DuckDBDataFrame}, or an in-memory
 #'   \code{sf}/\code{data.frame} with a geometry column, to join against.
 #' @param join Spatial predicate function (default \code{st_intersects}).
+#' @param suffix Length-two character vector of suffixes for attribute names
+#'   that \code{x} and \code{y} share, as in \code{sf::st_join()}.
+#' @param left Logical; keep the rows of \code{x} that match nothing (a left
+#'   join, the default, as in \code{sf::st_join()}), or only those that match.
+#' @param largest Not supported; \code{TRUE} is an error.
 #' @param ... Ignored.
 #' @exportS3Method sf::st_join
-#' @importFrom DuckDBDataFrame DuckDBDataFrame tblconn dbconn
+#' @importFrom DuckDBDataFrame DuckDBDataFrame tblconn dbconn keynames
 #' @importFrom dbplyr sql_render
 #' @importFrom sf st_join st_intersects
-st_join.DuckDBTable <- function(x, y, join = st_intersects, ...) {
+st_join.DuckDBTable <- function(x, y, join = st_intersects, ...,
+                                suffix = c(".x", ".y"), left = TRUE,
+                                largest = FALSE) {
+    if (isTRUE(largest))
+        stop("'largest = TRUE' is not supported on a DuckDBTable")
+    if (!isTRUEorFALSE(left))
+        stop("'left' must be TRUE or FALSE")
     y <- .as_duckdb_table(y, dbconn(x))
     pred <- .st_predicate_sql_name(join)
     conn <- dbconn(x)
     x_q <- sql_render(tblconn(x, select = FALSE))
     y_q <- sql_render(tblconn(y, select = FALSE))
-    x_geom <- .geom_col_sql_ref(conn, x_q, "geometry", prefix = "x")
-    y_geom <- .geom_col_sql_ref(conn, y_q, "geometry", prefix = "y")
-    sql_txt <- sprintf(
-        "SELECT x.*, y.* FROM (%s) x INNER JOIN (%s) y ON %s(%s, %s)",
-        x_q, y_q, pred, x_geom, y_geom)
+    x_gname <- .geom_colname(x)
+    y_gname <- .geom_colname(y)
+    x_geom <- .geom_col_sql_ref(conn, x_q, x_gname, prefix = "x")
+    y_geom <- .geom_col_sql_ref(conn, y_q, y_gname, prefix = "y")
+    x_cols <- setdiff(unique(c(keynames(x), colnames(x))), x_gname)
+    y_cols <- setdiff(unique(c(keynames(y), colnames(y))), y_gname)
+    shared <- intersect(x_cols, y_cols)
+    x_out <- ifelse(x_cols %in% shared, paste0(x_cols, suffix[1L]), x_cols)
+    y_out <- ifelse(y_cols %in% shared, paste0(y_cols, suffix[2L]), y_cols)
+    q <- function(v) paste0('"', gsub('"', '""', v, fixed = TRUE), '"')
+    select_sql <- paste(c(sprintf("x.%s AS %s", q(x_cols), q(x_out)),
+                          sprintf("y.%s AS %s", q(y_cols), q(y_out)),
+                          sprintf("x.%s AS %s", q(x_gname), q(x_gname))),
+                        collapse = ", ")
+    sql_txt <- sprintf("SELECT %s FROM (%s) x %s JOIN (%s) y ON %s(%s, %s)",
+                       select_sql, x_q, if (left) "LEFT" else "INNER", y_q,
+                       pred, x_geom, y_geom)
     .lazy_sql_ddf(conn, sql_txt)
 }
 
@@ -1685,8 +1723,8 @@ st_join_table <- function(x, y, join = st_intersects, sparse = TRUE, ...) {
     conn <- dbconn(x)
     x_q <- sql_render(tblconn(x, select = FALSE))
     y_q <- sql_render(tblconn(y, select = FALSE))
-    x_geom <- .geom_col_sql_ref(conn, x_q, "geometry", prefix = "x")
-    y_geom <- .geom_col_sql_ref(conn, y_q, "geometry", prefix = "y")
+    x_geom <- .geom_col_sql_ref(conn, x_q, .geom_colname(x), prefix = "x")
+    y_geom <- .geom_col_sql_ref(conn, y_q, .geom_colname(y), prefix = "y")
     sql_txt <- sprintf(
         paste0("SELECT x.__rowid__ AS id_x, y.__rowid__ AS id_y ",
                "FROM (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) x ",
@@ -1705,7 +1743,7 @@ st_join_table <- function(x, y, join = st_intersects, sparse = TRUE, ...) {
 #' @importFrom S4Vectors new2
 .spatial_geometry_agg <- function(x, fun, by = NULL) {
     if (is(x, "DuckDBTable"))
-        x <- x@datacols[[1L]]
+        x <- x[[.detect_geom_colname(x)]]
     if (!is(x, "DuckDBColumn"))
         stop("'x' must be a DuckDBColumn or DuckDBTable with a geometry column")
     table <- x@table
@@ -1736,7 +1774,7 @@ st_union_agg <- function(x, by = NULL, ...) {
 #' @export
 st_collect_agg <- function(x, by = NULL, ...) {
     if (is(x, "DuckDBTable"))
-        x <- x@datacols[[1L]]
+        x <- x[[.detect_geom_colname(x)]]
     if (!is(x, "DuckDBColumn"))
         stop("'x' must be a DuckDBColumn or DuckDBTable with a geometry column")
     table <- x@table

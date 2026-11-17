@@ -89,10 +89,20 @@ SELECT ST_Intersects(geometry, ST_GeomFromText('<q as WKT>')) FROM layer
 ```
 
 Because these are ordinary columns in the query, DuckDB applies its usual
-optimizations, column pruning (only the geometry column is read) and predicate
-pushdown (a spatial filter is evaluated during the Parquet scan). The result of a
-column method is a lazy `DuckDBColumn`; the result of `st_filter()` is a lazy
-`DuckDBDataFrame`.
+optimizations, such as column pruning (only the geometry column is read). The
+result of a column method is a lazy `DuckDBColumn`; the result of `st_filter()`
+is a lazy `DuckDBDataFrame`.
+
+Whether a spatial predicate also skips parts of a Parquet file depends on the
+file. DuckDB prunes row groups for a spatial predicate only from the bounding
+boxes that a file records for its geometry column (Parquet's native geometry
+type). The GeoParquet 1.0 files that `writeGeoParquet()` writes hold the
+geometry as plain WKB, with no per-row-group bounds, so every row group is read.
+For points, a coordinate range on `x` and `y` over a file sorted by
+`writeSpatialPointsParquet()` is the way to skip row groups
+(`layerBboxRange()`). `st_filter()` and row subsetting first find which rows
+match, which reads the geometry column in full, and then restrict the table to
+those rows.
 
 ```{r sql-demo, eval=.spatial_ok}
 spatial_path <- system.file("extdata", "spatial", package = "DuckDBSpatial")

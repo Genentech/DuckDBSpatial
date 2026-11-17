@@ -161,7 +161,15 @@ st_intersects_table(x, y, sparse = TRUE, ...)
 
 \method{st_filter}{DuckDBTable}(x, y, ..., .predicate = st_intersects)
 
-\method{st_join}{DuckDBTable}(x, y, join = st_intersects, ...)
+\method{st_join}{DuckDBTable}(
+  x,
+  y,
+  join = st_intersects,
+  ...,
+  suffix = c(".x", ".y"),
+  left = TRUE,
+  largest = FALSE
+)
 
 st_join_table(x, y, join = st_intersects, sparse = TRUE, ...)
 
@@ -190,6 +198,14 @@ st_envelope_agg(x, by = NULL, ...)
 \item{.predicate}{Spatial predicate function (default \code{st_intersects}).}
 
 \item{join}{Spatial predicate function (default \code{st_intersects}).}
+
+\item{suffix}{Length-two character vector of suffixes for attribute names
+that \code{x} and \code{y} share, as in \code{sf::st_join()}.}
+
+\item{left}{Logical; keep the rows of \code{x} that match nothing (a left
+join, the default, as in \code{sf::st_join()}), or only those that match.}
+
+\item{largest}{Not supported; \code{TRUE} is an error.}
 
 \item{by}{Optional grouping column name(s).}
 }
@@ -258,7 +274,9 @@ hijacked \pkg{sf} generic name: \code{sql_call(x, "ST_GeomFromText")} (or
   \item{\code{st_coordinates(x, geom = NULL)}:}{
     A \code{DuckDBDataFrame} with the X, Y (and Z, M when present)
     coordinate columns of a geometry column, as for a
-    \code{DuckDBColumn}. \code{geom} is as for \code{st_bbox()}.
+    \code{DuckDBColumn}. \code{geom} is as for \code{st_bbox()}. Only
+    point geometries have coordinates here: for lines and polygons DuckDB
+    stops with an error, where \code{sf} returns every vertex.
   }
   \item{\code{st_as_sfc(x, ..., crs = NA_integer_, GeoJSON = FALSE, WKB = FALSE, geom = "geometry")}:}{
     Collects column \code{geom} into an in-memory \code{\link[sf]{sfc}},

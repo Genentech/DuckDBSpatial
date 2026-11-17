@@ -268,3 +268,20 @@ test_that("writeGeoParquet marks 3D geometry types with a Z suffix", {
     DuckDBSpatial::writeGeoParquet(more, path, append = TRUE)
     expect_setequal(geo_types(path), c("Point Z", "Point"))
 })
+
+test_that("writeGeoParquet keeps the CRS of a lazy table", {
+    pol <- sf::st_sf(id = 1:2, geometry = sf::st_sfc(
+        sf::st_buffer(sf::st_point(c(1, 1)), 0.5),
+        sf::st_buffer(sf::st_point(c(3, 3)), 0.5), crs = 3857))
+    p1 <- tempfile(fileext = ".parquet")
+    p2 <- tempfile(fileext = ".parquet")
+    on.exit(unlink(c(p1, p2)), add = TRUE)
+    writeGeoParquet(pol, p1)
+    lazy <- readGeoParquet(p1)
+    expect_identical(sf::st_crs(lazy)$epsg, 3857L)
+
+    writeGeoParquet(lazy, p2)
+    again <- readGeoParquet(p2)
+    expect_identical(sf::st_crs(again)$epsg, 3857L)
+    expect_equal(as.data.frame(again)$id, 1:2)
+})

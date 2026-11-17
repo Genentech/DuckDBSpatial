@@ -285,7 +285,7 @@ test_that("st_join_table returns a sparse id_x/id_y pair table for two lazy tabl
     expect_setequal(colnames(pairs_df), c("id_x", "id_y"))
     # Same predicate, same tables: must have exactly as many pairs as the
     # already-established full-attribute st_join(df, df) above.
-    expect_equal(nrow(pairs_df), nrow(as.data.frame(st_join(df, df))))
+    expect_equal(nrow(pairs_df), nrow(as.data.frame(st_join(df, df, left = FALSE))))
 
     # as.data.frame() on a lazy table materializes its geometry column as a
     # list of raw WKB (DuckDBDataFrame's own on-disk shape), which must round-
@@ -312,7 +312,7 @@ test_that("st_join/st_join_table accept an in-memory sf object on either side", 
     mem_mem <- as.data.frame(st_join_table(poly_sf, poly_sf))
     expect_equal(nrow(mem_mem), 2L)
 
-    joined <- st_join(df, poly_sf)
+    joined <- st_join(df, poly_sf, left = FALSE)
     expect_s4_class(joined, "DuckDBDataFrame")
     expect_equal(nrow(joined), nrow(lazy_mem))
 })
@@ -406,7 +406,7 @@ test_that("st_join/st_join_table cast a plain WKT-text geometry column on either
     pairs <- as.data.frame(st_join_table(x_text, df))
     expect_equal(nrow(pairs), gt_pairs)
 
-    joined <- st_join(x_text, df)
+    joined <- st_join(x_text, df, left = FALSE)
     expect_s4_class(joined, "DuckDBDataFrame")
     expect_equal(nrow(joined), gt_pairs)
 
@@ -833,4 +833,174 @@ test_that("st_as_sf forwards ... to sf::st_as_sf", {
 
     sfobj <- st_as_sf(ddb, agr = "constant")
     expect_identical(unname(as.character(st_agr(sfobj)["id"])), "constant")
+})
+
+## A layer with a named key is read in the order of its stored keys, which is
+## neither the order of the file nor the order a database sorts the keys in, so
+## every per-row result has to be put into that order.
+.keyed_points <- function(ids, x) {
+    p <- tempfile(fileext = ".parquet")
+    arrow::write_parquet(data.frame(id = ids, x = x, y = 0), p)
+    list(path = p, layer = DuckDBDataFrame(p, keycol = "id"))
+}
+
+test_that("layer engines return rows in stored-key order for a named integer key", {
+    k <- .keyed_points(c(3, 1, 2), c(30, 1, 5))
+    on.exit(unlink(k$path), add = TRUE)
+    x <- as.data.frame(k$layer)$x
+    expect_identical(x, c(1, 5, 30))
+    env <- st_make_envelope_sql(0, -1, 10, 1)
+    expect_identical(layerSpatialOverlaps(k$layer, env, coords = c("x", "y")),
+                     x <= 10)
+    expect_identical(x[layerSubsetByBbox(k$layer, 0, 10, -1, 1)], c(1, 5))
+    poly <- sf::st_as_sfc("POLYGON((0 -1, 10 -1, 10 1, 0 1, 0 -1))")
+    expect_identical(x[layerSubsetByGeometry(k$layer, poly, coords = c("x", "y"))],
+                     c(1, 5))
+})
+
+test_that("layer engines return rows in stored-key order for a named character key", {
+    ids <- c("b", "A", "a", "B", "_x", "10", "9")
+    k <- .keyed_points(ids, c(30, 1, 5, 2, 40, 3, 50))
+    on.exit(unlink(k$path), add = TRUE)
+    df <- as.data.frame(k$layer)
+    inside <- df$x <= 10
+    # the stored order is not the sorted order of the keys
+    expect_false(identical(rownames(k$layer), sort(rownames(k$layer))))
+    expect_identical(
+        layerSpatialOverlaps(k$layer, st_make_envelope_sql(0, -1, 10, 1),
+                             coords = c("x", "y")),
+        inside)
+    expect_identical(layerSubsetByBbox(k$layer, 0, 10, -1, 1), which(inside))
+})
+
+test_that("layerSpatialMatch gives positions in stored-key order, whichever side is keyed", {
+    k <- .keyed_points(c("b", "A", "a", "B", "_x", "10", "9"),
+                       c(30, 1, 5, 2, 40, 3, 50))
+    on.exit(unlink(k$path), add = TRUE)
+    x <- as.data.frame(k$layer)$x
+    polys <- sf::st_sf(g = 1:2, geometry = sf::st_as_sfc(c(
+        "POLYGON((0 -1, 3 -1, 3 1, 0 1, 0 -1))",
+        "POLYGON((4 -1, 10 -1, 10 1, 4 1, 4 -1))")))
+    want <- ifelse(x >= 0 & x <= 3, 1L, ifelse(x >= 4 & x <= 10, 2L, NA_integer_))
+
+    pp <- tempfile(fileext = ".parquet")
+    on.exit(unlink(pp), add = TRUE)
+    writeGeoParquet(polys, pp)
+    numbered <- readGeoParquet(pp)
+    expect_identical(layerSpatialMatch(k$layer, numbered, coords = c("x", "y")),
+                     want)
+
+    # a keyed table: positions follow the table's own stored-key order
+    kp <- tempfile(fileext = ".parquet")
+    on.exit(unlink(kp), add = TRUE)
+    writeGeoParquet(polys, kp)
+    keyed <- readGeoParquet(kp, keycol = "g")
+    got <- layerSpatialMatch(k$layer, keyed, coords = c("x", "y"))
+    expect_identical(got, match(want, as.integer(rownames(keyed))))
+})
+
+test_that("layerSpatialMatch refuses a predicate it cannot express", {
+    k <- .keyed_points(1:2, c(1, 2))
+    on.exit(unlink(k$path), add = TRUE)
+    pp <- tempfile(fileext = ".parquet")
+    on.exit(unlink(pp), add = TRUE)
+    writeGeoParquet(sf::st_sf(g = 1L, geometry = sf::st_as_sfc("POLYGON((0 -1, 3 -1, 3 1, 0 1, 0 -1))")), pp)
+    expect_error(
+        layerSpatialMatch(k$layer, readGeoParquet(pp), coords = c("x", "y"),
+                          join = function(x, y) NULL),
+        "not recognized")
+    expect_identical(
+        layerSpatialMatch(k$layer, readGeoParquet(pp), coords = c("x", "y"),
+                          join = sf::st_within),
+        c(1L, 1L))
+})
+
+
+## st_join() follows sf::st_join(): a left join by default, all of x then the
+## attributes of y with suffixes on shared names, and one geometry column.
+test_that("st_join on a DuckDBTable agrees with sf::st_join", {
+    pts <- sf::st_sf(id = 1:3, v = c("a", "b", "c"), geometry = sf::st_sfc(
+        sf::st_point(c(0, 0)), sf::st_point(c(5, 5)), sf::st_point(c(10, 10))))
+    pol <- sf::st_sf(id = c(10L, 20L), g = c("p", "q"), geometry = sf::st_sfc(
+        sf::st_buffer(sf::st_point(c(0, 0)), 1),
+        sf::st_buffer(sf::st_point(c(5, 5)), 1)))
+    p <- tempfile(fileext = ".parquet")
+    on.exit(unlink(p), add = TRUE)
+    writeGeoParquet(pts, p)
+    lazy <- readGeoParquet(p)
+
+    for (left in c(TRUE, FALSE)) {
+        want <- sf::st_join(pts, pol, left = left)
+        got <- as.data.frame(st_join(lazy, pol, left = left))
+        expect_identical(nrow(got), nrow(want), info = paste("left =", left))
+        expect_identical(colnames(got), colnames(as.data.frame(want)))
+        expect_identical(got$id.x, want$id.x)
+        expect_identical(got$id.y, want$id.y)
+        expect_identical(got$g, want$g)
+    }
+    # the default is sf's: unmatched rows of x are kept
+    expect_identical(nrow(st_join(lazy, pol)), 3L)
+    expect_identical(nrow(st_join(lazy, pol, left = FALSE)), 2L)
+    # nothing internal leaks, and there is a single geometry column
+    expect_false(any(grepl("row_number", colnames(st_join(lazy, pol)))))
+    expect_identical(sum(vapply(colnames(st_join(lazy, pol)), function(nm)
+        nm == "geometry", NA)), 1L)
+    expect_identical(colnames(st_join(lazy, pol, suffix = c("_x", "_y"))),
+                     c("id_x", "v", "id_y", "g", "geometry"))
+    expect_error(st_join(lazy, pol, largest = TRUE), "not supported")
+})
+
+test_that("st_join, st_join_table and st_filter find a geometry column not called 'geometry'", {
+    pts <- sf::st_sf(id = 1:2, geom = sf::st_sfc(sf::st_point(c(0, 0)),
+                                                 sf::st_point(c(9, 9))))
+    pol <- sf::st_sf(g = 1L, geom = sf::st_sfc(sf::st_buffer(sf::st_point(c(0, 0)), 1)))
+    p <- tempfile(fileext = ".parquet")
+    on.exit(unlink(p), add = TRUE)
+    writeGeoParquet(pts, p, geom = "geom")
+    lazy <- readGeoParquet(p)
+    expect_identical(nrow(st_join(lazy, pol, left = FALSE)), 1L)
+    expect_identical(nrow(as.data.frame(st_join_table(lazy, pol))), 1L)
+    expect_identical(nrow(st_filter(lazy, sf::st_sfc(sf::st_point(c(0, 0))))), 1L)
+})
+
+test_that("a geometry sent to DuckDB keeps every digit it was given", {
+    pt <- sf::st_sfc(sf::st_point(c(123456.123456789, 4567890.987654321)))
+    p <- tempfile(fileext = ".parquet")
+    on.exit(unlink(p), add = TRUE)
+    writeGeoParquet(sf::st_sf(id = 1L, geometry = pt), p)
+    lazy <- readGeoParquet(p)
+    expect_identical(as.data.frame(st_distance(lazy, pt[[1L]]))[[1L]], 0)
+    expect_true(as.data.frame(st_intersects(lazy, pt[[1L]]))[[1L]])
+    other <- sf::st_sf(g = 1L, geometry = pt)
+    expect_identical(nrow(st_join(lazy, other, left = FALSE)), 1L)
+})
+
+test_that("the spatial aggregates take a table with a geometry column, as documented", {
+    df <- DuckDBDataFrame(spatial_path)
+    df <- df[which(!is.na(spatial_wkt)), ]
+    sfc <- st_as_sfc(spatial_wkt[!is.na(spatial_wkt)])
+    checkDuckDBColumn(st_union_agg(df), st_as_text(st_union(sfc)))
+    checkDuckDBColumn(st_collect_agg(df), st_as_text(st_combine(sfc)))
+    checkDuckDBColumn(st_envelope_agg(df), st_as_text(st_as_sfc(st_bbox(sfc))))
+})
+
+test_that("a geometry column that arrives as wk_wkb converts to an sfc", {
+    skip_if_not_installed("wk")
+    sfc <- st_as_sfc(c("POINT (1 2)", "POINT (3 4)"))
+    col <- wk::as_wkb(sfc)
+    expect_s3_class(col, "wk_wkb")
+    got <- DuckDBSpatial:::.wkb_column_to_sfc(col, NA)
+    expect_equal(unname(sf::st_coordinates(got)[, 1:2]),
+                 unname(sf::st_coordinates(sfc)[, 1:2]))
+})
+
+test_that("coordinates are always (x, y) on the shared connection, so ST_Transform works", {
+    conn <- DuckDBDataFrame::acquireDuckDBConn()
+    expect_identical(
+        DBI::dbGetQuery(conn, "SELECT current_setting('geometry_always_xy') AS v")$v,
+        TRUE)
+    got <- DBI::dbGetQuery(conn, paste(
+        "SELECT ST_X(ST_Transform(ST_Point(500000, 4649776),",
+        "'EPSG:32633', 'EPSG:4326')) AS x"))$x
+    expect_equal(got, 15, tolerance = 1e-3)
 })

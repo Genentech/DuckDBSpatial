@@ -114,7 +114,10 @@ reports each row's OGC geometry type, and
 [`st_area()`](https://r-spatial.github.io/sf/reference/geos_measures.html)
 its planar area (this bundled example has no coordinate reference system set,
 so the values are in raw coordinate units rather than a real-world unit like
-square meters).
+square meters). Measurements are always planar, in the units of the coordinates:
+for a layer in longitude and latitude (a geographic CRS) `st_area()` is in square
+degrees, where `r CRANpkg("sf")` would give square meters, so project such a layer
+before measuring it.
 
 Measurements (`st_area()`, `st_length()`, `st_perimeter()`) and geometry
 transforms (`st_centroid()`, `st_buffer()`, `st_convex_hull()`) all return

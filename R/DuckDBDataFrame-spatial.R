@@ -2,35 +2,76 @@
 ### Layer-level spatial engines for DuckDBDataFrame (no container generics)
 ###
 
+# A query returns the rows of a layer in scan order, but a layer with a named
+# key is read in the order of its stored keys (rownames()), which is neither
+# the scan order nor any order a database can reproduce (for character keys it
+# is not even sorted).
+#' @importFrom DuckDBDataFrame keycols keynames has_row_number
+#' @importFrom stats setNames
+.key_positions <- function(x, key_values) {
+    kc <- keycols(x)[[1L]]
+    kv <- as.character(key_values)
+    nm <- if (is.null(names(kc))) kv else unname(setNames(names(kc), kc)[kv])
+    match(nm, rownames(x))
+}
+
+# The key column of a layer whose rows come back keyed, or NULL when the
+# layer is numbered by row (scan order is its order).
+.layer_key <- function(x) {
+    if (has_row_number(x))
+        return(NULL)
+    kn <- keynames(x)
+    if (length(kn) != 1L)
+        stop("'x' must have a single key column")
+    kn
+}
+
 #' @importFrom DBI dbGetQuery
 #' @importFrom dbplyr sql_render
 #' @importFrom dplyr mutate pull sql
 #' @importFrom DuckDBDataFrame dbconn tblconn
 #' @importFrom sf st_as_sfc st_as_text st_intersects
 .spatialMatch_sql <- function(x, table, coords, geom, join_fun) {
-    # Only ever called by layerSpatialMatch() below when 'table' is already
-    # a DuckDBTable; a plain sf/data.frame 'table' takes that function's
-    # separate in-memory sf::st_intersects()-based path instead.
     conn <- dbconn(x)
     x_q <- sql_render(tblconn(x, select = FALSE))
     t_q <- sql_render(tblconn(table, select = FALSE))
-    pred <- if (identical(join_fun, sf::st_within)) "ST_Within" else "ST_Intersects"
+    pred <- .st_predicate_sql_name(join_fun)
     pt_expr <- sprintf('ST_Point(n."%s", n."%s")', coords[1L], coords[2L])
-    # 'table' may already be a DuckDBTable whose 'geom' column is still
-    # plain WKT text (e.g. from a CSV, or any non-GeoParquet source); probe
-    # and cast only if it isn't already DuckDB-native GEOMETRY.
     geom_ref <- .geom_col_sql_ref(conn, t_q, geom, prefix = "t")
-    sql_txt <- sprintf(
-        paste0("WITH numbered AS (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) ",
-               "SELECT n.__rowid__ AS id_x, MIN(t.__rowid__) AS match_idx ",
-               "FROM numbered n JOIN (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) t ",
-               "ON %s(%s, %s) GROUP BY n.__rowid__"),
-        x_q, t_q, pred, pt_expr, geom_ref)
+    x_key <- .layer_key(x)
+    t_key <- .layer_key(table)
+    x_from <- if (is.null(x_key)) {
+        sprintf("(SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) n", x_q)
+    } else {
+        sprintf("(%s) n", x_q)
+    }
+    x_id <- if (is.null(x_key)) "n.__rowid__" else sprintf('n."%s"', x_key)
+    t_from <- if (is.null(t_key)) {
+        sprintf("(SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) t", t_q)
+    } else {
+        sprintf("(%s) t", t_q)
+    }
+    t_id <- if (is.null(t_key)) "t.__rowid__" else sprintf('t."%s"', t_key)
+    sql_txt <- if (is.null(t_key)) {
+        sprintf(paste0("SELECT %s AS id_x, MIN(%s) AS id_t FROM %s JOIN %s ",
+                       "ON %s(%s, %s) GROUP BY %s"),
+                x_id, t_id, x_from, t_from, pred, pt_expr, geom_ref, x_id)
+    } else {
+        sprintf(paste0("SELECT DISTINCT %s AS id_x, %s AS id_t FROM %s JOIN %s ",
+                       "ON %s(%s, %s)"),
+                x_id, t_id, x_from, t_from, pred, pt_expr, geom_ref)
+    }
     pairs <- dbGetQuery(conn, sql_txt)
-    n <- nrow(x)
-    out <- rep(NA_integer_, n)
+    out <- rep(NA_integer_, nrow(x))
     if (nrow(pairs)) {
-        out[as.integer(pairs$id_x)] <- as.integer(pairs$match_idx)
+        xpos <- if (is.null(x_key)) as.integer(pairs$id_x)
+                else .key_positions(x, pairs$id_x)
+        tpos <- if (is.null(t_key)) as.integer(pairs$id_t)
+                else .key_positions(table, pairs$id_t)
+        # the first match is the smallest position, and the last assignment
+        # to an element wins
+        o <- order(tpos, decreasing = TRUE)
+        out[xpos[o]] <- tpos[o]
     }
     out
 }
@@ -70,6 +111,7 @@
 #' @export
 #' @importClassesFrom DuckDBDataFrame DuckDBDataFrame DuckDBColumn
 #' @importFrom DuckDBDataFrame tblconn
+#' @importFrom dplyr collect select all_of
 #' @importFrom stats setNames
 layerSpatialOverlaps <- function(x, y, coords = NULL, geom = "geometry") {
     if (!is(x, "DuckDBDataFrame"))
@@ -80,7 +122,18 @@ layerSpatialOverlaps <- function(x, y, coords = NULL, geom = "geometry") {
         bool_sql <- sprintf("ST_Intersects(ST_Point(\"%s\", \"%s\"), %s)",
                             coords[1L], coords[2L], as.character(y_sql))
         hit_expr <- setNames(list(sql(bool_sql)), ".hit")
-        as.logical(pull(mutate(conn, !!!hit_expr), ".hit"))
+        key <- .layer_key(x)
+        if (is.null(key)) {
+            as.logical(pull(mutate(conn, !!!hit_expr), ".hit"))
+        } else {
+            res <- collect(select(mutate(conn, !!!hit_expr),
+                                  all_of(c(key, ".hit"))))
+            pos <- .key_positions(x, res[[key]])
+            hit <- as.logical(res[[".hit"]])
+            out <- rep(NA, nrow(x))
+            out[pos] <- hit
+            out
+        }
     } else {
         geom_col <- x[[geom]]
         if (is(geom_col, "DuckDBColumn")) {
@@ -232,7 +285,10 @@ layerSubsetByGeometry <- function(x, y, coords = NULL, geom = "geometry") {
 #' \code{ST_Intersects} against an envelope, and returns row indices), the range
 #' predicate pushes into DuckDB's Parquet reader, so on a Morton-sorted (coord-indexed)
 #' points file (see \code{\link{writeSpatialPointsParquet}}) it prunes row groups
-#' outside the box. The result is a \strong{lazy} \code{DuckDBDataFrame} (nothing is
+#' outside the box. Pruning needs a layer with a named key, as read from a file
+#' with \code{DuckDBDataFrame(path, keycol = ...)} or by \code{readParquet()};
+#' on a layer numbered by row the filter is applied after the numbering and
+#' is not pushed into the scan. The result is a \strong{lazy} \code{DuckDBDataFrame} (nothing is
 #' materialized until collected), the R counterpart of scibis' \code{query_points}.
 #'
 #' @param x A \link[DuckDBDataFrame:DuckDBDataFrame-class]{DuckDBDataFrame} point layer.

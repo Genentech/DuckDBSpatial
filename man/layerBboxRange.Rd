@@ -42,7 +42,10 @@ using a plain coordinate range predicate
 \code{ST_Intersects} against an envelope, and returns row indices), the range
 predicate pushes into DuckDB's Parquet reader, so on a Morton-sorted (coord-indexed)
 points file (see \code{\link{writeSpatialPointsParquet}}) it prunes row groups
-outside the box. The result is a \strong{lazy} \code{DuckDBDataFrame} (nothing is
+outside the box. Pruning needs a layer with a named key, as read from a file
+with \code{DuckDBDataFrame(path, keycol = ...)} or by \code{readParquet()};
+on a layer numbered by row the filter is applied after the numbering and
+is not pushed into the scan. The result is a \strong{lazy} \code{DuckDBDataFrame} (nothing is
 materialized until collected), the R counterpart of scibis' \code{query_points}.
 }
 \examples{

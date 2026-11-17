@@ -1,3 +1,80 @@
+# DuckDBSpatial 0.99.21
+
+## Significant changes
+
+- `st_join()` on a `DuckDBTable` or `DuckDBDataFrame` now follows
+  `sf::st_join()`. It is a left join by default, so a row of `x` that matches
+  nothing is kept, where before it was dropped by an inner join that ignored
+  `left`. Use `left = FALSE` for the old result. The result has all of `x`, then
+  the attributes of `y` with `suffix` (default `c(".x", ".y")`) on any name the
+  two share, then one geometry column. A named key of `x` or `y` is kept as a
+  column. `largest = TRUE` is an error, since it is not supported.
+
+## Bug fixes
+
+- `layerSpatialOverlaps()`, `layerSubsetByBbox()`, `layerSubsetByGeometry()` and
+  `layerSpatialMatch()` gave wrong rows for a layer with a named key. They
+  returned results in the order the database scanned the rows, but such a layer
+  is read in the order of its stored keys, which is neither the order of the
+  file nor the order the database sorts the keys in (for character keys it is
+  not even sorted). For a file with `id = c(3, 1, 2)` and `x = c(30, 1, 5)`,
+  `layerSubsetByBbox(0, 10, ...)` returned the rows with `x` 5 and 30, not 1 and
+  5. The results are now put in stored-key order, for a keyed layer and for a
+  keyed `table` in `layerSpatialMatch()`. A layer numbered by row is unchanged.
+  Since `subsetByBoundingBox()` and `subsetByPolygon()` in BiocDuckDB use these
+  functions, they were affected too.
+- `layerSpatialMatch()` treated every predicate except `st_within` as
+  `st_intersects`, so `join = st_contains` or `st_touches` silently returned
+  intersects. It now maps the predicate as `st_join()` does and stops for one it
+  cannot express.
+- A geometry given to a predicate, distance or join as an `sf` object or `sfg`
+  was sent to DuckDB as text with 7 significant digits, which moved a
+  UTM-scale or micron-scale coordinate by metres. For a point at
+  `(123456.123456789, 4567890.987654321)`, `st_distance()` to the identical
+  point returned 0.0265, `st_intersects()` returned `FALSE`, and `st_join()`
+  matched nothing. Geometries are now sent with 17 significant digits, which
+  round-trips any double.
+- `st_join()` returned the internal `row_number` columns of both tables and two
+  geometry columns, and failed with a binder error for a table whose geometry
+  column is not called `geometry`. `st_join()`, `st_join_table()`,
+  `st_intersects_table()` and `st_filter()` now find the geometry column by its
+  type, and fall back to `geometry` only when there is not exactly one.
+- `st_union_agg()`, `st_collect_agg()` and `st_envelope_agg()` stopped with an
+  error for a `DuckDBTable` or `DuckDBDataFrame`, though they are documented to
+  take one. They now use the table's geometry column.
+- A connection that returns geometry through `wk`, such as the one that
+  `duckspatial::ddbs_create_conn()` opens, gives a `wk_wkb` vector, which
+  `st_as_sf()` and `st_as_sfc()` could not convert. It is now converted.
+- `writeGeoParquet()` of a `DuckDBTable` or `DuckDBDataFrame` dropped the CRS:
+  the table was collected as a plain data frame, and the CRS lives in the
+  `GEOMETRY` type, not in the collected WKB. A layer in EPSG:3857 was written,
+  and read back, with no CRS. The table is now collected as an `sf` data frame,
+  which keeps it.
+- DuckDB 2.0 refuses `ST_Transform` and the spheroid functions until
+  `geometry_always_xy` is set. It is now set once on the shared connection when
+  the package loads, since coordinates here are always `(x, y)`; DuckDB 2.1 makes
+  this the default.
+
+## Documentation
+
+- The design vignette said a spatial filter is evaluated during the Parquet
+  scan. DuckDB prunes row groups for a spatial predicate only from the bounds a
+  file records for a native Parquet geometry column. The GeoParquet 1.0 files
+  that `writeGeoParquet()` writes hold plain WKB with no per-row-group bounds, so
+  every row group is read, and `st_filter()` and row subsetting read the whole
+  geometry column to find the matching rows. The vignette now says so, and
+  points to `layerBboxRange()` over a file from `writeSpatialPointsParquet()`
+  for points.
+- `layerBboxRange()` prunes row groups only for a layer with a named key. On a
+  layer numbered by row the filter is applied after the numbering and is not
+  pushed into the scan. The help page now says so.
+- The introductory vignette says that `st_area()`, `st_length()`, `st_perimeter()`
+  and `st_distance()` are planar, in the units of the coordinates: for a layer
+  in longitude and latitude they give square degrees or degrees, where `sf`
+  gives meters.
+- `st_coordinates()` on a table is documented as points only: for lines and
+  polygons DuckDB stops with an error, where `sf` returns every vertex.
+
 # DuckDBSpatial 0.99.20
 
 ## New features
