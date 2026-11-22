@@ -1503,6 +1503,12 @@ st_point_sql <- function(x_col, y_col) {
     DuckDBDataFrame(tbl(conn, sql(sql_txt)))
 }
 
+#' @importFrom DuckDBDataFrame addRowPosition tblconn
+#' @importFrom dbplyr sql_render
+.query_with_position <- function(x) {
+    sql_render(addRowPosition(x, tblconn(x, select = FALSE), "__rowid__"))
+}
+
 #' @rdname DuckDBTable-spatial
 #' @param x A \code{DuckDBTable} or \code{DuckDBDataFrame}.
 #' @param y A geometry to test against.
@@ -1517,13 +1523,12 @@ st_intersects_table <- function(x, y, sparse = TRUE, ...) {
         stop("'x' must be a DuckDBTable or DuckDBDataFrame")
     y_sql <- .geom_to_sql(y)
     conn <- dbconn(x)
-    x_q <- sql_render(tblconn(x, select = FALSE))
+    x_q <- .query_with_position(x)
+    x_geom <- .geom_col_sql_ref(conn, x_q, .geom_colname(x), prefix = "t")
     sql_txt <- sprintf(
-        paste0("SELECT row_number() OVER () AS id_x, t.__rowid__ AS id_y ",
-               "FROM (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) t ",
-               "WHERE ST_Intersects(t.\"%s\", %s)"),
-        x_q, gsub('"', '""', .geom_colname(x), fixed = TRUE),
-        as.character(y_sql))
+        paste0("SELECT CAST(t.__rowid__ AS BIGINT) AS id_x, 1 AS id_y ",
+               "FROM (%s) t WHERE ST_Intersects(%s, %s)"),
+        x_q, x_geom, as.character(y_sql))
     if (isTRUE(sparse)) {
         .lazy_sql_ddf(conn, sql_txt)
     } else {
@@ -1721,15 +1726,14 @@ st_join_table <- function(x, y, join = st_intersects, sparse = TRUE, ...) {
     y <- .as_duckdb_table(y, dbconn(x))
     pred <- .st_predicate_sql_name(join)
     conn <- dbconn(x)
-    x_q <- sql_render(tblconn(x, select = FALSE))
-    y_q <- sql_render(tblconn(y, select = FALSE))
+    x_q <- .query_with_position(x)
+    y_q <- .query_with_position(y)
     x_geom <- .geom_col_sql_ref(conn, x_q, .geom_colname(x), prefix = "x")
     y_geom <- .geom_col_sql_ref(conn, y_q, .geom_colname(y), prefix = "y")
     sql_txt <- sprintf(
-        paste0("SELECT x.__rowid__ AS id_x, y.__rowid__ AS id_y ",
-               "FROM (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) x ",
-               "INNER JOIN (SELECT *, row_number() OVER () AS __rowid__ FROM (%s)) y ",
-               "ON %s(%s, %s)"),
+        paste0("SELECT CAST(x.__rowid__ AS BIGINT) AS id_x, ",
+               "CAST(y.__rowid__ AS BIGINT) AS id_y ",
+               "FROM (%s) x INNER JOIN (%s) y ON %s(%s, %s)"),
         x_q, y_q, pred, x_geom, y_geom)
     if (isTRUE(sparse)) {
         .lazy_sql_ddf(conn, sql_txt)

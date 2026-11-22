@@ -1004,3 +1004,55 @@ test_that("coordinates are always (x, y) on the shared connection, so ST_Transfo
         "'EPSG:32633', 'EPSG:4326')) AS x"))$x
     expect_equal(got, 15, tolerance = 1e-3)
 })
+
+# A table of points whose file is not in key order, so that the position of a
+# row in the file differs from its position in the object
+.shuffled_points <- function(wkt = FALSE) {
+    set.seed(2)
+    ids <- sprintf("p%02d", sample(8L))
+    xs <- c(1, 2, 3, 10, 11, 12, 20, 30)
+    pts <- sf::st_sfc(lapply(seq_along(xs), function(i) sf::st_point(c(xs[i], xs[i]))))
+    path <- tempfile(fileext = ".parquet")
+    if (wkt) {
+        arrow::write_parquet(data.frame(id = ids, geometry = sf::st_as_text(pts),
+                                        stringsAsFactors = FALSE), path)
+    } else {
+        writeGeoParquet(sf::st_sf(id = ids, geometry = pts), path)
+    }
+    df <- DuckDBDataFrame(path, keycol = "id")
+    list(df = df, path = path,
+         points = pts[match(rownames(df), ids)])   # in the order of the object
+}
+
+test_that("st_join_table ids are positions in the order of each table, not of the file", {
+    polys <- sf::st_sf(name = c("A", "B"), geometry = sf::st_sfc(
+        sf::st_polygon(list(matrix(c(0, 0, 5, 0, 5, 5, 0, 5, 0, 0), ncol = 2, byrow = TRUE))),
+        sf::st_polygon(list(matrix(c(9, 9, 13, 9, 13, 13, 9, 13, 9, 9), ncol = 2, byrow = TRUE)))))
+    for (wkt in c(FALSE, TRUE)) {
+        fx <- .shuffled_points(wkt)
+        on.exit(unlink(fx$path), add = TRUE)
+        hit <- sf::st_intersects(fx$points, polys)
+        truth <- do.call(rbind, lapply(seq_along(hit), function(i) {
+            if (length(hit[[i]])) data.frame(id_x = i, id_y = hit[[i]])
+        }))
+        got <- as.data.frame(st_join_table(fx$df, polys))
+        got <- data.frame(id_x = as.numeric(got[["id_x"]]), id_y = as.numeric(got[["id_y"]]))
+        got <- got[order(got$id_x, got$id_y), ]
+        rownames(got) <- rownames(truth) <- NULL
+        expect_equal(got, truth, info = if (wkt) "WKT text" else "native geometry")
+    }
+})
+
+test_that("st_intersects_table gives (row of x, 1) pairs in the order of x, for native and WKT geometry", {
+    polyA <- sf::st_polygon(list(matrix(c(0, 0, 5, 0, 5, 5, 0, 5, 0, 0), ncol = 2, byrow = TRUE)))
+    for (wkt in c(FALSE, TRUE)) {
+        fx <- .shuffled_points(wkt)
+        on.exit(unlink(fx$path), add = TRUE)
+        want <- which(lengths(sf::st_intersects(fx$points, sf::st_sfc(polyA))) > 0L)
+        got <- as.data.frame(st_intersects_table(fx$df, polyA))
+        expect_setequal(colnames(got), c("id_x", "id_y"))
+        expect_equal(sort(as.numeric(got[["id_x"]])), as.numeric(want),
+                     info = if (wkt) "WKT text" else "native geometry")
+        expect_true(all(as.numeric(got[["id_y"]]) == 1))
+    }
+})

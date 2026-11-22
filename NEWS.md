@@ -1,3 +1,32 @@
+# DuckDBSpatial 0.99.22
+
+## Significant changes
+
+- `st_intersects_table()` now returns pairs in the form that
+  `sf::st_intersects(x, y)` gives: `id_x` is the row of `x` and `id_y` is the row
+  of `y`, which is 1 because `y` is a single geometry. Before, `id_x` only counted
+  the rows that matched and `id_y` held the rows of `x`, so a table of matches had
+  the row of `x` in the column named for `y`. Code that read the rows of `x` from
+  `id_y` has to read `id_x`.
+
+## Bug fixes
+
+- `st_join_table()` and `st_intersects_table()` numbered the rows with
+  `row_number()` over the scan of the file, so the ids were the positions of the
+  rows in the file and not in the order of the table, which is the stored order of
+  its keys. For a table with a named key whose file is not in key order, `x[id_x, ]`
+  was a different row from the one that matched. The ids are now the positions in
+  the order of `x` and of `y`, computed with `DuckDBDataFrame::addRowPosition()`.
+- `st_intersects_table()` failed with a binder error on a geometry column that is
+  WKT text, which `st_join_table()` already cast. It casts it as well now.
+
+## Testing
+
+- New tests compare the pairs of `st_join_table()` and the rows of
+  `st_intersects_table()` with `sf::st_intersects()` for a keyed table whose file
+  is not in key order, with a native geometry column and with a WKT text column.
+  They fail on the previous code.
+
 # DuckDBSpatial 0.99.21
 
 ## Significant changes
