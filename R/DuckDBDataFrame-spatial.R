@@ -121,15 +121,15 @@ layerSpatialOverlaps <- function(x, y, coords = NULL, geom = "geometry") {
         conn <- tblconn(x, select = FALSE)
         bool_sql <- sprintf("ST_Intersects(ST_Point(\"%s\", \"%s\"), %s)",
                             coords[1L], coords[2L], as.character(y_sql))
-        hit_expr <- setNames(list(sql(bool_sql)), ".hit")
+        hit_expr <- setNames(list(sql(bool_sql)), "__hit__")
         key <- .layer_key(x)
         if (is.null(key)) {
-            as.logical(pull(mutate(conn, !!!hit_expr), ".hit"))
+            as.logical(pull(mutate(conn, !!!hit_expr), "__hit__"))
         } else {
             res <- collect(select(mutate(conn, !!!hit_expr),
-                                  all_of(c(key, ".hit"))))
+                                  all_of(c(key, "__hit__"))))
             pos <- .key_positions(x, res[[key]])
-            hit <- as.logical(res[[".hit"]])
+            hit <- as.logical(res[["__hit__"]])
             out <- rep(NA, nrow(x))
             out[pos] <- hit
             out

@@ -20,6 +20,13 @@
 - `st_intersects_table()` failed with a binder error on a geometry column that is
   WKT text, which `st_join_table()` already cast. It casts it as well now.
 
+## Internal changes
+
+- The column that the layer engines use inside their query for the flag that a row
+  hit is named `__hit__`. It used to be `.hit`, and now follows the style of the
+  columns that reach files and schemas, such as `__name__` and `__index__`. Only
+  the name changed.
+
 ## Testing
 
 - New tests compare the pairs of `st_join_table()` and the rows of
