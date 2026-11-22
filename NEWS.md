@@ -26,6 +26,12 @@
   `st_intersects_table()` with `sf::st_intersects()` for a keyed table whose file
   is not in key order, with a native geometry column and with a WKT text column.
   They fail on the previous code.
+- A test of the layer engines assumed that the stored order of a named character
+  key is not its sorted order. Keys that are derived from the file are stored in
+  sorted byte order, which is also the order that `sort()` gives under the C
+  collation that `R CMD check` uses, so the test failed there and passed only in
+  a locale such as `en_US.UTF-8`. It now gives the layer a key order of its own,
+  which is neither the order of the file nor the sorted order, in any locale.
 
 # DuckDBSpatial 0.99.21
 

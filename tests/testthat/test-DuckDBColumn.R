@@ -835,13 +835,15 @@ test_that("st_as_sf forwards ... to sf::st_as_sf", {
     expect_identical(unname(as.character(st_agr(sfobj)["id"])), "constant")
 })
 
-## A layer with a named key is read in the order of its stored keys, which is
-## neither the order of the file nor the order a database sorts the keys in, so
-## every per-row result has to be put into that order.
-.keyed_points <- function(ids, x) {
+## A layer with a named key is read in the order of its stored keys, which need
+## not be the order of the file or the order a database sorts the keys in, so
+## every per-row result has to be put into that order. Keys that are derived from
+## the file are stored in sorted (byte) order; 'keys' gives a stored order of the
+## caller's own.
+.keyed_points <- function(ids, x, keys = "id") {
     p <- tempfile(fileext = ".parquet")
     arrow::write_parquet(data.frame(id = ids, x = x, y = 0), p)
-    list(path = p, layer = DuckDBDataFrame(p, keycol = "id"))
+    list(path = p, layer = DuckDBDataFrame(p, keycol = keys))
 }
 
 test_that("layer engines return rows in stored-key order for a named integer key", {
@@ -860,12 +862,17 @@ test_that("layer engines return rows in stored-key order for a named integer key
 
 test_that("layer engines return rows in stored-key order for a named character key", {
     ids <- c("b", "A", "a", "B", "_x", "10", "9")
-    k <- .keyed_points(ids, c(30, 1, 5, 2, 40, 3, 50))
+    # a stored order of the caller's own, so that it is neither the order of the
+    # file nor the sorted order of the keys, in any locale
+    stored <- c("a", "9", "B", "_x", "b", "10", "A")
+    k <- .keyed_points(ids, c(30, 1, 5, 2, 40, 3, 50), keys = list(id = stored))
     on.exit(unlink(k$path), add = TRUE)
     df <- as.data.frame(k$layer)
     inside <- df$x <= 10
-    # the stored order is not the sorted order of the keys
-    expect_false(identical(rownames(k$layer), sort(rownames(k$layer))))
+    expect_identical(rownames(k$layer), stored)
+    expect_false(identical(rownames(k$layer), ids))
+    expect_false(identical(rownames(k$layer), sort(stored, method = "radix")))
+    expect_false(identical(rownames(k$layer), sort(stored)))
     expect_identical(
         layerSpatialOverlaps(k$layer, st_make_envelope_sql(0, -1, 10, 1),
                              coords = c("x", "y")),
