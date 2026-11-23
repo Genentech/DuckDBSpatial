@@ -42,7 +42,8 @@ biocViews:
     DataImport,
     DataRepresentation,
     Infrastructure,
-    Software
+    Software,
+    Spatial
 VignetteBuilder: knitr
 Encoding: UTF-8
 Collate:
