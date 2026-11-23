@@ -1,6 +1,6 @@
 Package: DuckDBSpatial
-Version: 0.99.22
-Date: 2026-11-21
+Version: 0.99.23
+Date: 2026-11-23
 Title: DuckDB-Backed Spatial Data Structures
 Description:
     Provides DuckDB-backed implementations of spatial data structures for efficient
@@ -50,6 +50,7 @@ Collate:
     'DuckDBColumn-spatial.R'
     'DuckDBDataFrame-spatial.R'
     'DuckDBSpatial-package.R'
+    'convertToGeoParquet.R'
     'coordinate-transform-graph.R'
     'coordinate-transforms.R'
     'geoparquet-io.R'

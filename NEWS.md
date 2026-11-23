@@ -1,3 +1,47 @@
+# DuckDBSpatial 0.99.23
+
+## New features
+
+- `convertToGeoParquet()` writes a spatial file that GDAL can read, such as
+  GeoJSON, GeoPackage or Shapefile, as a GeoParquet file. DuckDB streams the
+  conversion through `ST_Read()`, so the data does not pass through R. `layer`
+  picks a layer of a source that has several, and `geom` names the geometry
+  column, which GDAL calls `geom`. The index of the feature in the file,
+  `OGC_FID`, is dropped unless `keep_fid = TRUE`. The file is written beside its
+  target and renamed, so a failure does not leave a partial file.
+- `readSpatialFile()` converts a file in the same way and returns the result of
+  `readGeoParquet()`, a lazy `DuckDBDataFrame`. The converted file is in the
+  `tempdir()` of the session unless `to` gives a path. `keycol` is passed on, and
+  `keycol = "OGC_FID"` keeps and uses the index of the feature in the file.
+- A GeoJSON or similar file is converted, and not read lazily, because DuckDB
+  reads it with `ST_Read()`, which parses the whole file again for every query
+  and cannot skip columns or rows. A query on the converted file does neither.
+- `crs` of `convertToGeoParquet()` and `readSpatialFile()` says what to do about
+  the coordinate reference system. `NULL`, the default, keeps the CRS that GDAL
+  reports; an EPSG code, a CRS string or an `sf` `crs` object assigns that CRS
+  without reprojecting; `NA` records the CRS as unknown. An unknown CRS is
+  written as an explicit `null` in the GeoParquet metadata, since a GeoParquet
+  file without a CRS is read as `OGC:CRS84`. DuckDB does not write the metadata
+  in that case, so the source is read once more to find the bounding box and the
+  geometry types, and the types are left empty, which means unknown, when a
+  geometry is not a plain 2D type.
+- GDAL gives a GeoJSON file that has no CRS the CRS `EPSG:4326`, since GeoJSON is
+  defined in WGS84. Coordinates that are not longitude and latitude, such as the
+  pixel coordinates of cell outlines, are then labelled wrongly, and `crs = NA`
+  records them as unknown. The help page says so.
+
+## Testing
+
+- A new test file, `test-convertToGeoParquet.R`, checks that a converted GeoJSON
+  keeps its attributes, geometries and CRS, compared with the `sf` object that was
+  written; that the CRS is kept, assigned or recorded as unknown, with the
+  metadata that each case writes; the geometry types of an unknown CRS, with
+  mixed types and with a Z geometry; the choice of a layer of a GeoPackage; the
+  name of the geometry column and a clash with a column of the file; `keep_fid`;
+  the checks on the arguments, an existing target, and a file that GDAL cannot
+  read leaving no partial file; and `readSpatialFile()` with and without a key
+  and a path.
+
 # DuckDBSpatial 0.99.22
 
 ## Significant changes

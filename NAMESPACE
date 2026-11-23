@@ -175,6 +175,7 @@ S3method(st_within_properly,DuckDBColumn)
 S3method(st_within_properly,DuckDBTable)
 S3method(st_within_properly,default)
 export(asCoordinateTransform)
+export(convertToGeoParquet)
 export(coordinateSystem)
 export(ctAffine)
 export(ctAffineMatrix)
@@ -199,6 +200,7 @@ export(layerSpatialOverlaps)
 export(layerSubsetByBbox)
 export(layerSubsetByGeometry)
 export(readGeoParquet)
+export(readSpatialFile)
 export(spatialSortPoints)
 export(st_affine)
 export(st_build_area)
@@ -269,10 +271,12 @@ importFrom(DuckDBDataFrame,
   clusterSort,
   coltypes,
   dbconn,
+  escapeSQLPath,
   has_row_number,
   keycols,
   keynames,
   loadExtension,
+  resolveParquetCompression,
   sql_call,
   tblconn,
   zorder
