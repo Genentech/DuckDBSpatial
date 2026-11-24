@@ -91,8 +91,10 @@
 #'   \item{\code{st_boundary(x)}:}{
 #'     Geometry boundary.
 #'   }
-#'   \item{\code{st_buffer(x, dist)}:}{
-#'     Buffer by \code{dist} units.
+#'   \item{\code{st_buffer(x, dist, nQuadSegs = 30, endCapStyle = "ROUND",
+#'     joinStyle = "ROUND", mitreLimit = 1, singleSide = FALSE)}:}{
+#'     Buffer by \code{dist} units, as \code{sf::st_buffer()} does. See
+#'     \code{\link{DuckDBTable-spatial}} for the arguments.
 #'   }
 #'   \item{\code{st_build_area(x)}:}{
 #'     Build area of a geometry.
@@ -241,7 +243,8 @@
 #'     Returns an \code{sfc} GEOMETRYCOLLECTION via \code{ST_Collect}.
 #'   }
 #'   \item{\code{st_union(x)} (no \code{y}):}{
-#'     Returns an \code{sfc} via \code{ST_Union_Agg}.
+#'     Returns an \code{sfc} of length one via \code{ST_Union_Agg}, in the CRS
+#'     of \code{x}.
 #'   }
 #'   \item{\code{st_crs(x)}:}{
 #'     The CRS of \code{x}'s geometry, via \code{ST_CRS}.
@@ -505,8 +508,16 @@ st_boundary.DuckDBColumn <- function(x) {
 
 #' @exportS3Method sf::st_buffer
 #' @importFrom sf st_buffer
-st_buffer.DuckDBColumn <- function(x, dist, ...) {
-    replaceSlots(x, table = st_buffer(x@table, dist), check = FALSE)
+st_buffer.DuckDBColumn <-
+function(x, dist, nQuadSegs = 30L, endCapStyle = "ROUND", joinStyle = "ROUND",
+         mitreLimit = 1, singleSide = FALSE, ...)
+{
+    replaceSlots(x, table = st_buffer(x@table, dist, nQuadSegs = nQuadSegs,
+                                      endCapStyle = endCapStyle,
+                                      joinStyle = joinStyle,
+                                      mitreLimit = mitreLimit,
+                                      singleSide = singleSide, ...),
+                 check = FALSE)
 }
 
 #' @export
@@ -756,12 +767,7 @@ st_nearest_points.DuckDBColumn <- function(x, y, ...) {
 #' @importFrom sf st_union
 st_union.DuckDBColumn <- function(x, y, ...) {
     if (missing(y)) {
-        table <- x@table
-        geom <- table@datacols[[1L]]
-        aggr <- list(geom = call("ST_AsText", call("ST_Union_Agg", geom)))
-        res <- as.data.frame(dplyr::summarize(
-            tblconn(x, select = FALSE), !!!aggr))
-        sf::st_as_sfc(res$geom)
+        .union_agg_sfc(x@table, names(x@table@datacols)[1L])
     } else {
         replaceSlots(x, table = st_union(x@table, y), check = FALSE)
     }

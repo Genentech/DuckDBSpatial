@@ -374,8 +374,15 @@ Each returns a DuckDBTable with a transformed geometry per row.
   \item{\code{st_boundary(x)}:}{
     Geometry boundary.
   }
-  \item{\code{st_buffer(x, dist)}:}{
-    Buffer by \code{dist} units.
+  \item{\code{st_buffer(x, dist, nQuadSegs = 30, endCapStyle = "ROUND",
+    joinStyle = "ROUND", mitreLimit = 1, singleSide = FALSE)}:}{
+    Buffer by \code{dist} units, as \code{sf::st_buffer()} does.
+    \code{nQuadSegs} is the number of segments that approximate a quarter
+    circle, \code{endCapStyle} is \code{"ROUND"}, \code{"FLAT"} or
+    \code{"SQUARE"}, \code{joinStyle} is \code{"ROUND"}, \code{"MITRE"} or
+    \code{"BEVEL"}, and \code{mitreLimit} applies to a mitre join. The
+    styles are case-insensitive. DuckDB cannot buffer on one side only, so
+    \code{singleSide = TRUE} is an error. \code{dist} is a single number.
   }
   \item{\code{st_build_area(x)}:}{
     Build area of a geometry.
@@ -516,6 +523,11 @@ predicates) and returns a GEOMETRY DuckDBTable.
   }
   \item{\code{st_nearest_points(x, y)}:}{
     Shortest line between \code{x} and \code{y} (DuckDB \code{ST_ShortestLine}).
+  }
+  \item{\code{st_union(x)} (no \code{y}):}{
+    Returns an \code{sfc} of length one with the union of all the geometries
+    of \code{x}, in the CRS of \code{x}, as \code{sf::st_union()} does for an
+    \code{sf} data frame.
   }
   \item{\code{st_union(x, y)}:}{
     Union of \code{x} and \code{y}.  Binary form only at the

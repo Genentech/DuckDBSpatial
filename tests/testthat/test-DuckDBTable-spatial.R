@@ -161,3 +161,133 @@ test_that("st_bbox and st_coordinates on a DuckDBTable match sf and keep the CRS
     expect_equal(as.data.frame(st_coordinates(two, geom = "geom2"))$X, xy$X)
     expect_error(st_bbox(two, geom = "id"), "not a GEOMETRY column")
 })
+
+## st_buffer(): the arguments of sf::st_buffer(), and st_union() with no 'y'.
+
+.lazy_layer <- function(g, keycol = "id") {
+    path <- tempfile(fileext = ".parquet")
+    writeGeoParquet(g, path)
+    list(path = path, layer = readGeoParquet(path, keycol = keycol))
+}
+
+test_that("st_buffer takes the end cap, join, segment and mitre arguments of sf", {
+    skip_if_not_installed("nanoparquet")
+    shapes <- list(
+        point = sf::st_sfc(sf::st_point(c(0, 0)), sf::st_point(c(5, 5))),
+        line = sf::st_sfc(sf::st_linestring(rbind(c(0, 0), c(10, 0), c(10, 10))),
+                          sf::st_linestring(rbind(c(0, 5), c(3, 8)))),
+        polygon = sf::st_sfc(
+            sf::st_polygon(list(rbind(c(0, 0), c(4, 0), c(4, 4), c(0, 4), c(0, 0)))),
+            sf::st_polygon(list(rbind(c(10, 10), c(12, 10), c(11, 13), c(10, 10))))))
+    for (nm in names(shapes)) {
+        g <- sf::st_sf(id = c("a", "b"), geometry = shapes[[nm]], crs = 3857)
+        lazy <- .lazy_layer(g)
+        on.exit(unlink(lazy$path), add = TRUE)
+        for (cap in c("ROUND", "FLAT", "SQUARE")) {
+            # sf refuses a flat cap on a point
+            if (nm == "point" && cap == "FLAT")
+                next
+            for (join in c("ROUND", "MITRE", "BEVEL")) {
+                for (nq in c(4L, 30L)) {
+                    want <- sf::st_buffer(g$geometry, 1.5, nQuadSegs = nq,
+                                          endCapStyle = cap, joinStyle = join,
+                                          mitreLimit = 2)
+                    got <- st_as_sfc(st_buffer(lazy$layer, 1.5, nQuadSegs = nq,
+                                               endCapStyle = cap, joinStyle = join,
+                                               mitreLimit = 2))
+                    info <- paste(nm, cap, join, nq)
+                    expect_identical(sf::st_crs(got), sf::st_crs(want), info = info)
+                    expect_true(all(sf::st_equals(got, want, sparse = FALSE)[cbind(1:2, 1:2)]),
+                                info = info)
+                    expect_equal(as.numeric(sf::st_area(got)), as.numeric(sf::st_area(want)),
+                                 tolerance = 1e-6, info = info)
+                }
+            }
+        }
+    }
+})
+
+test_that("st_buffer with a square end cap gives the square that sf gives, as for a Visium HD spot", {
+    skip_if_not_installed("nanoparquet")
+    g <- sf::st_sf(id = "s", geometry = sf::st_sfc(sf::st_point(c(100, 200))), crs = 3857)
+    lazy <- .lazy_layer(g)
+    on.exit(unlink(lazy$path))
+    got <- st_as_sfc(st_buffer(lazy$layer, 4, endCapStyle = "SQUARE"))
+    expect_identical(sf::st_as_text(got),
+                     sf::st_as_text(sf::st_buffer(g$geometry, 4, endCapStyle = "SQUARE")))
+    # the same through a column
+    col <- st_as_sfc(st_buffer(lazy$layer[["geometry"]], 4, endCapStyle = "square"))
+    expect_identical(sf::st_as_text(col), sf::st_as_text(got))
+})
+
+test_that("st_buffer follows the sf default of 30 segments, and checks its arguments", {
+    skip_if_not_installed("nanoparquet")
+    g <- sf::st_sf(id = "a", geometry = sf::st_sfc(sf::st_point(c(0, 0))), crs = 3857)
+    lazy <- .lazy_layer(g)
+    on.exit(unlink(lazy$path))
+    x <- lazy$layer
+    npoints <- function(s) nrow(sf::st_coordinates(s))
+    expect_identical(npoints(st_as_sfc(st_buffer(x, 1))), npoints(sf::st_buffer(g$geometry, 1)))
+    expect_identical(npoints(st_as_sfc(st_buffer(x, 1, nQuadSegs = 4))), 17L)
+
+    # ST_Buffer has no one-sided buffer
+    expect_error(st_buffer(x, 1, singleSide = TRUE), "singleSide")
+    expect_error(st_buffer(x, 1, singleSide = NA), "singleSide")
+    expect_error(st_buffer(x, 1, endCapStyle = "ROUNDISH"), "endCapStyle")
+    expect_error(st_buffer(x, 1, endCapStyle = c("ROUND", "FLAT")), "endCapStyle")
+    expect_error(st_buffer(x, 1, joinStyle = 3), "joinStyle")
+    expect_error(st_buffer(x, 1, nQuadSegs = 0), "nQuadSegs")
+    expect_error(st_buffer(x, 1, mitreLimit = -1), "mitreLimit")
+    expect_error(st_buffer(x, c(1, 2)), "dist")
+    expect_error(st_buffer(x, NA_real_), "dist")
+    # an argument that would be ignored is an error
+    expect_error(st_buffer(x, 1, nonsense = 2), "unused argument")
+})
+
+test_that("st_union with no y returns the union of all the geometries, with the CRS", {
+    skip_if_not_installed("nanoparquet")
+    cells <- sf::st_sf(id = c("a", "b", "c"), geometry = sf::st_sfc(
+        sf::st_polygon(list(rbind(c(0, 0), c(2, 0), c(2, 2), c(0, 2), c(0, 0)))),
+        sf::st_polygon(list(rbind(c(1, 1), c(3, 1), c(3, 3), c(1, 3), c(1, 1)))),
+        sf::st_polygon(list(rbind(c(10, 10), c(11, 10), c(11, 11), c(10, 11), c(10, 10))))),
+        crs = 3857)
+    lazy <- .lazy_layer(cells)
+    on.exit(unlink(lazy$path))
+    want <- sf::st_union(cells)
+
+    # the table, a DuckDBDataFrame of cells
+    got <- st_union(lazy$layer)
+    expect_s3_class(got, "sfc")
+    expect_length(got, 1L)
+    expect_identical(sf::st_crs(got), sf::st_crs(want))
+    expect_true(sf::st_equals(got, want, sparse = FALSE)[1L, 1L])
+    expect_equal(as.numeric(sf::st_area(got)), 8)
+
+    # the column gives the same, and used to lose the CRS
+    from_col <- st_union(lazy$layer[["geometry"]])
+    expect_identical(sf::st_crs(from_col), sf::st_crs(want))
+    expect_true(sf::st_equals(from_col, want, sparse = FALSE)[1L, 1L])
+
+    # a subset of the rows is the union of those rows only
+    part <- st_union(lazy$layer[c("a", "c"), ])
+    expect_equal(as.numeric(sf::st_area(part)), 5)
+
+    # the union with a y is still a lazy table
+    expect_s4_class(st_union(lazy$layer, cells$geometry[[3L]]), "DuckDBDataFrame")
+})
+
+test_that("st_union then st_concave_hull gives the tissue boundary, as in a SpatialFeatureExperiment", {
+    skip_if_not_installed("nanoparquet")
+    set.seed(5)
+    n <- 60L
+    xy <- cbind(runif(n, 0, 100), runif(n, 0, 100))
+    cells <- sf::st_sf(id = sprintf("c%03d", seq_len(n)),
+                       geometry = sf::st_buffer(sf::st_sfc(lapply(seq_len(n), function(i) sf::st_point(xy[i, ]))), 4),
+                       crs = 3857)
+    lazy <- .lazy_layer(cells)
+    on.exit(unlink(lazy$path))
+    want <- sf::st_concave_hull(sf::st_union(sf::st_set_geometry(cells, "geometry")), ratio = 0.5)
+    got <- sf::st_concave_hull(st_union(lazy$layer), ratio = 0.5)
+    expect_identical(sf::st_crs(got), sf::st_crs(want))
+    expect_equal(as.numeric(sf::st_area(got)), as.numeric(sf::st_area(want)), tolerance = 1e-6)
+})

@@ -151,8 +151,15 @@
 #'   \item{\code{st_boundary(x)}:}{
 #'     Geometry boundary.
 #'   }
-#'   \item{\code{st_buffer(x, dist)}:}{
-#'     Buffer by \code{dist} units.
+#'   \item{\code{st_buffer(x, dist, nQuadSegs = 30, endCapStyle = "ROUND",
+#'     joinStyle = "ROUND", mitreLimit = 1, singleSide = FALSE)}:}{
+#'     Buffer by \code{dist} units, as \code{sf::st_buffer()} does.
+#'     \code{nQuadSegs} is the number of segments that approximate a quarter
+#'     circle, \code{endCapStyle} is \code{"ROUND"}, \code{"FLAT"} or
+#'     \code{"SQUARE"}, \code{joinStyle} is \code{"ROUND"}, \code{"MITRE"} or
+#'     \code{"BEVEL"}, and \code{mitreLimit} applies to a mitre join. The
+#'     styles are case-insensitive. DuckDB cannot buffer on one side only, so
+#'     \code{singleSide = TRUE} is an error. \code{dist} is a single number.
 #'   }
 #'   \item{\code{st_build_area(x)}:}{
 #'     Build area of a geometry.
@@ -289,6 +296,11 @@
 #'   }
 #'   \item{\code{st_nearest_points(x, y)}:}{
 #'     Shortest line between \code{x} and \code{y} (DuckDB \code{ST_ShortestLine}).
+#'   }
+#'   \item{\code{st_union(x)} (no \code{y}):}{
+#'     Returns an \code{sfc} of length one with the union of all the geometries
+#'     of \code{x}, in the CRS of \code{x}, as \code{sf::st_union()} does for an
+#'     \code{sf} data frame.
 #'   }
 #'   \item{\code{st_union(x, y)}:}{
 #'     Union of \code{x} and \code{y}.  Binary form only at the
@@ -965,8 +977,45 @@ st_boundary.DuckDBTable <- function(x, ...) {
 #' @exportS3Method sf::st_buffer
 #' @importFrom DuckDBDataFrame sql_call
 #' @importFrom sf st_buffer
-st_buffer.DuckDBTable <- function(x, dist, ...) {
-    .sql_call_geom_replace(x, "ST_Buffer", as.numeric(dist))
+st_buffer.DuckDBTable <-
+function(x, dist, nQuadSegs = 30L, endCapStyle = "ROUND", joinStyle = "ROUND",
+         mitreLimit = 1, singleSide = FALSE, ...)
+{
+    if (...length())
+        stop("unused argument", if (...length() > 1L) "s", " in st_buffer(): ",
+             paste(...names() %||% rep("", ...length()), collapse = ", "))
+    args <- .buffer_arguments(dist, nQuadSegs, endCapStyle, joinStyle,
+                              mitreLimit, singleSide)
+    do.call(.sql_call_geom_replace, c(list(x, "ST_Buffer"), args))
+}
+
+.buffer_arguments <-
+function(dist, nQuadSegs, endCapStyle, joinStyle, mitreLimit, singleSide)
+{
+    number <- function(x, what, positive = FALSE) {
+        if (!is.numeric(x) || length(x) != 1L || !is.finite(x) ||
+            (positive && x <= 0))
+            stop("'", what, "' must be a single ", if (positive) "positive ",
+                 "number")
+        as.numeric(x)
+    }
+    style <- function(x, what, choices, prefix) {
+        if (!is.character(x) || length(x) != 1L || is.na(x) ||
+            !toupper(x) %in% choices)
+            stop("'", what, "' must be one of ",
+                 paste(sprintf('"%s"', choices), collapse = ", "))
+        paste0(prefix, toupper(x))
+    }
+    if (!isTRUE(singleSide) && !isFALSE(singleSide))
+        stop("'singleSide' must be TRUE or FALSE")
+    if (singleSide)
+        stop("'singleSide = TRUE' is not supported: DuckDB's ST_Buffer() cannot ",
+             "buffer on one side only")
+    list(number(dist, "dist"),
+         as.integer(number(nQuadSegs, "nQuadSegs", positive = TRUE)),
+         style(endCapStyle, "endCapStyle", c("ROUND", "FLAT", "SQUARE"), "CAP_"),
+         style(joinStyle, "joinStyle", c("ROUND", "MITRE", "BEVEL"), "JOIN_"),
+         number(mitreLimit, "mitreLimit", positive = TRUE))
 }
 
 #' @export
@@ -1464,9 +1513,17 @@ st_nearest_points.DuckDBTable <- function(x, y, ...) {
 #' @importFrom sf st_union
 st_union.DuckDBTable <- function(x, y, ...) {
     if (missing(y))
-        stop("'y' is required for st_union on DuckDBTable; ",
-             "use st_union on DuckDBColumn for aggregate union")
+        return(.union_agg_sfc(x, .detect_geom_colname(x)))
     .sql_call_geom_replace(x, "ST_Union", .geom_to_sql(y))
+}
+
+#' @importFrom DuckDBDataFrame DuckDBTable tblconn
+#' @importFrom dplyr summarize
+#' @importFrom sf st_as_sfc
+.union_agg_sfc <- function(x, geom) {
+    aggr <- list(geometry = call("ST_Union_Agg", x@datacols[[geom]]))
+    conn <- summarize(tblconn(x, select = FALSE), !!!aggr)
+    st_as_sfc(DuckDBTable(conn, datacols = "geometry"))
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
