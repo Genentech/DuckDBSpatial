@@ -171,8 +171,10 @@ Each returns a DuckDBColumn with a transformed geometry per row.
   \item{\code{st_boundary(x)}:}{
     Geometry boundary.
   }
-  \item{\code{st_buffer(x, dist)}:}{
-    Buffer by \code{dist} units.
+  \item{\code{st_buffer(x, dist, nQuadSegs = 30, endCapStyle = "ROUND",
+    joinStyle = "ROUND", mitreLimit = 1, singleSide = FALSE)}:}{
+    Buffer by \code{dist} units, as \code{sf::st_buffer()} does. See
+    \code{\link{DuckDBTable-spatial}} for the arguments.
   }
   \item{\code{st_build_area(x)}:}{
     Build area of a geometry.
@@ -327,7 +329,8 @@ These methods materialise and return concrete R objects.
     Returns an \code{sfc} GEOMETRYCOLLECTION via \code{ST_Collect}.
   }
   \item{\code{st_union(x)} (no \code{y}):}{
-    Returns an \code{sfc} via \code{ST_Union_Agg}.
+    Returns an \code{sfc} of length one via \code{ST_Union_Agg}, in the CRS
+    of \code{x}.
   }
   \item{\code{st_crs(x)}:}{
     The CRS of \code{x}'s geometry, via \code{ST_CRS}.

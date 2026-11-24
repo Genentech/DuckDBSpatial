@@ -1,3 +1,49 @@
+# DuckDBSpatial 1.0.1
+
+## Significant changes
+
+- `st_buffer()` of a `DuckDBTable`, `DuckDBDataFrame` or `DuckDBColumn` now draws
+  a quarter circle with 30 segments, the default of `sf::st_buffer()`, where it
+  used the default of DuckDB, 8. A buffered point has 121 vertices, as it does in
+  `sf`, and not 33. The shape is the same circle, drawn more finely, so the
+  geometries are larger. Give `nQuadSegs = 8` for the old result.
+
+## New features
+
+- `st_buffer()` takes the other arguments of `sf::st_buffer()`: `nQuadSegs`,
+  `endCapStyle` (`"ROUND"`, `"FLAT"` or `"SQUARE"`), `joinStyle` (`"ROUND"`,
+  `"MITRE"` or `"BEVEL"`) and `mitreLimit`. They were not accepted, and were
+  ignored without a message, so `endCapStyle = "SQUARE"`, which makes the square
+  spots of a Visium HD array, gave a round buffer. DuckDB's `ST_Buffer()` takes
+  these options together and spells them `CAP_SQUARE`, `JOIN_MITRE` and so on,
+  and the styles are mapped from the names of `sf`, in any case. The results
+  equal those of `sf` for points, lines and polygons. `singleSide = TRUE` is an
+  error, since DuckDB cannot buffer on one side only. An argument that
+  `st_buffer()` does not know is an error, and so is a `dist` that is not a
+  single number.
+- `st_union(x)` of a `DuckDBTable` or `DuckDBDataFrame` with no `y` returns the
+  union of all its geometries as an `sfc` of length one, as `sf::st_union()` does
+  for an `sf` data frame. It was an error that asked for `y`, which made it
+  impossible to take the union of the cells of a table before
+  `st_concave_hull()`, for the boundary of a tissue.
+
+## Bug fixes
+
+- `st_union(x)` of a `DuckDBColumn` with no `y` dropped the coordinate reference
+  system: the union of geometries in EPSG:3857 had none. It read the union as WKT
+  text. It is now kept as a geometry, so the result has the CRS of the column.
+  The table and the column methods share the one code path.
+
+## Testing
+
+- New tests compare `st_buffer()` with `sf::st_buffer()` for points, lines and
+  polygons, with every end cap and join style and two segment counts, the square
+  cap of a Visium HD spot through a table and a column, the default of 30
+  segments, and the checks on the arguments. Others compare `st_union()` with no
+  `y` of a table and of a column, and of a subset of the rows, with `sf`,
+  including the CRS, and the union followed by `st_concave_hull()`. They fail on
+  the previous code.
+
 # DuckDBSpatial 0.99.23
 
 ## New features
