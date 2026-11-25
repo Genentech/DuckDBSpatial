@@ -97,13 +97,14 @@ spatialSortPoints <- function(df, x_col = "x", y_col = "y", z_col = NULL,
 #' unlink(p)
 #'
 #' @export
-#' @importFrom DuckDBDataFrame acquireDuckDBConn buildParquetCopySQL
+#' @importFrom DuckDBDataFrame acquireDuckDBConn buildParquetCopySQL checkParquetColumnNames
 #' @importFrom DBI dbWriteTable dbRemoveTable dbExecute dbQuoteIdentifier
 writeSpatialPointsParquet <-
 function(df, path, x_col = "x", y_col = "y", z_col = NULL, spatial_sort = TRUE,
          row_group_size = 131072L, bits = 16L)
 {
-    df <- as.data.frame(df)
+    df <- as.data.frame(df, optional = TRUE)
+    checkParquetColumnNames(colnames(df))
     if (!all(c(x_col, y_col) %in% colnames(df))) {
         stop("'df' lacks coordinate columns '", x_col, "'/'", y_col, "'")
     }

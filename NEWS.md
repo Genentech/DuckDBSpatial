@@ -1,3 +1,21 @@
+# DuckDBSpatial 1.1.2
+
+## Significant changes
+
+- `writeGeoParquet()` and `writeSpatialPointsParquet()` refuse columns whose names
+  are the same up to case, as `Gene` and `gene` are, and say which. DuckDB, which
+  reads these files, binds a column name without regard to the case of the
+  letters A to Z, so a query for `gene` on a file that holds both returns the
+  values of `Gene` without a message. A file was written with both before.
+  Rename the columns before writing. The check is `checkParquetColumnNames()` of
+  DuckDBDataFrame, which also refuses a name that is `NA` or empty.
+
+## Bug fixes
+
+- `writeSpatialPointsParquet()` keeps the names of the columns of `df` as they
+  are. It converted `df` with `as.data.frame()`, which makes a name that is not a
+  valid R name, as `n cells` for a matrix or a list, into one that is.
+
 # DuckDBSpatial 1.1.1
 
 ## Significant changes
