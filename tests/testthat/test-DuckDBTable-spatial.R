@@ -162,6 +162,17 @@ test_that("st_bbox and st_coordinates on a DuckDBTable match sf and keep the CRS
     expect_error(st_bbox(two, geom = "id"), "not a GEOMETRY column")
 })
 
+## Two geometries are the same shape when what lies in one and not the other has
+## no area to speak of. sf::st_equals() asks for the same vertices to the last
+## bit, and the GEOS that DuckDB bundles and the one that sf links can differ in
+## the last digits of a vertex on an arc.
+.same_shape <- function(got, want, tolerance = 1e-6) {
+    vapply(seq_along(got), function(i) {
+        diff <- sum(as.numeric(sf::st_area(sf::st_sym_difference(got[i], want[i]))))
+        diff <= tolerance * max(as.numeric(sf::st_area(want[i])), 1)
+    }, logical(1L))
+}
+
 ## st_buffer(): the arguments of sf::st_buffer(), and st_union() with no 'y'.
 
 .lazy_layer <- function(g, keycol = "id") {
@@ -197,7 +208,7 @@ test_that("st_buffer takes the end cap, join, segment and mitre arguments of sf"
                                                mitreLimit = 2))
                     info <- paste(nm, cap, join, nq)
                     expect_identical(sf::st_crs(got), sf::st_crs(want), info = info)
-                    expect_true(all(sf::st_equals(got, want, sparse = FALSE)[cbind(1:2, 1:2)]),
+                    expect_true(all(.same_shape(got, want)),
                                 info = info)
                     expect_equal(as.numeric(sf::st_area(got)), as.numeric(sf::st_area(want)),
                                  tolerance = 1e-6, info = info)
@@ -260,13 +271,13 @@ test_that("st_union with no y returns the union of all the geometries, with the 
     expect_s3_class(got, "sfc")
     expect_length(got, 1L)
     expect_identical(sf::st_crs(got), sf::st_crs(want))
-    expect_true(sf::st_equals(got, want, sparse = FALSE)[1L, 1L])
+    expect_true(.same_shape(got, want))
     expect_equal(as.numeric(sf::st_area(got)), 8)
 
     # the column gives the same, and used to lose the CRS
     from_col <- st_union(lazy$layer[["geometry"]])
     expect_identical(sf::st_crs(from_col), sf::st_crs(want))
-    expect_true(sf::st_equals(from_col, want, sparse = FALSE)[1L, 1L])
+    expect_true(.same_shape(from_col, want))
 
     # a subset of the rows is the union of those rows only
     part <- st_union(lazy$layer[c("a", "c"), ])
