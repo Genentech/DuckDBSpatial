@@ -224,6 +224,7 @@
 #' }
 #'
 #' @export
+#' @importFrom DuckDBDataFrame checkParquetColumnNames
 #' @importFrom S4Vectors isTRUEorFALSE
 #' @importFrom sf st_as_binary st_as_sf st_as_sfc st_geometry
 writeGeoParquet <-
@@ -269,6 +270,9 @@ function(x, path, geom = "geometry", compression = "zstd",
             stop("geometry column must be sfc or list of raw (WKB)")
         }
     }
+
+    # DuckDB, which reads these files, binds a column name without regard to case
+    checkParquetColumnNames(names(df))
 
     if (isTRUE(append)) {
         if (!requireNamespace("blob", quietly = TRUE))
